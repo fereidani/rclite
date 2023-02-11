@@ -3,7 +3,7 @@
 [![Crates.io][crates-badge]][crates-url]
 [![Documentation][doc-badge]][doc-url]
 [![MIT licensed][mit-badge]][mit-url]
-[![Apache 2 licensed][apache-badge]][mit-url]
+[![Apache 2 licensed][apache-badge]][apache-url]
 
 [crates-badge]: https://img.shields.io/crates/v/rclite.svg
 [crates-url]: https://crates.io/crates/rclite

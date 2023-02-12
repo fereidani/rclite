@@ -156,6 +156,7 @@ impl<T> Arc<T> {
     /// // reconstruct arc to drop the reference and avoid memory leaks
     /// unsafe { Arc::from_raw(x_ptr) };
     /// ```
+    #[inline(always)]
     pub fn into_raw(this: Self) -> *const T {
         let ptr = Self::as_ptr(&this);
         core::mem::forget(this);
@@ -189,6 +190,7 @@ impl<T> Arc<T> {
     ///
     /// // The memory was freed when `x` went out of scope above, so `x_ptr` is now dangling!
     /// ```
+    #[inline(always)]
     pub unsafe fn from_raw(ptr: *const T) -> Self {
         // SAFETY: ptr offset is same as ArcInner struct offset no recalculation of
         // offset is required
@@ -215,8 +217,8 @@ impl<T> Arc<T> {
     /// ```
     #[inline(always)]
     #[must_use]
-    pub fn strong_count(&self) -> ucount {
-        self.inner().counter.load(Ordering::Acquire)
+    pub fn strong_count(&self) -> usize {
+        self.inner().counter.load(Ordering::Acquire) as usize
     }
 
     /// Compares if two Arcs reference the same allocation, similar to ptr::eq.
@@ -257,7 +259,7 @@ impl<T> Arc<T> {
     /// let _y = Arc::clone(&x);
     /// assert_eq!(*Arc::try_unwrap(x).unwrap_err(), 4);
     /// ```
-    #[inline]
+    #[inline(always)]
     pub fn try_unwrap(this: Self) -> Result<T, Self> {
         if Arc::strong_count(&this) == 1 {
             // SAFETY: there is only one reference to Arc it's safe to move out value of T
@@ -301,7 +303,7 @@ impl<T> Arc<T> {
     /// let inner = Arc::unwrap_or_clone(rc2);
     /// assert!(ptr::eq(ptr, inner.as_ptr()));
     /// ```
-    #[inline]
+    #[inline(always)]
     pub fn unwrap_or_clone(this: Self) -> T
     where
         T: Clone,
@@ -319,6 +321,7 @@ impl<T> Arc<T> {
 
 impl<T> Deref for Arc<T> {
     type Target = T;
+    #[inline(always)]
     fn deref(&self) -> &Self::Target {
         &self.inner().data
     }

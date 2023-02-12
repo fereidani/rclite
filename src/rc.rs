@@ -90,6 +90,7 @@ impl<T> Rc<T> {
     /// // reconstruct Rc to drop the reference and avoid memory leaks
     /// unsafe { Rc::from_raw(x_ptr) };
     /// ```
+    #[inline(always)]
     pub fn into_raw(this: Self) -> *const T {
         let ptr = Self::as_ptr(&this);
         core::mem::forget(this);
@@ -123,6 +124,7 @@ impl<T> Rc<T> {
     ///
     /// // The memory was freed when `x` went out of scope above, so `x_ptr` is now dangling!
     /// ```
+    #[inline(always)]
     pub unsafe fn from_raw(ptr: *const T) -> Self {
         // SAFETY: ptr offset is same as RcInner struct offset no recalculation of
         // offset is required
@@ -148,10 +150,10 @@ impl<T> Rc<T> {
     /// ```
     #[inline(always)]
     #[must_use]
-    pub fn strong_count(&self) -> ucount {
+    pub fn strong_count(&self) -> usize {
         // SAFETY: as self is a valid reference inner is valid reference in this
         // lifetime
-        unsafe { *self.inner().counter.get() }
+        unsafe { *self.inner().counter.get() as usize }
     }
 
     /// Compares if two [`Rc<T>`]s reference the same allocation, similar to
@@ -193,7 +195,7 @@ impl<T> Rc<T> {
     /// let _y = Rc::clone(&x);
     /// assert!(Rc::get_mut(&mut x).is_none());
     /// ```
-    #[inline]
+    #[inline(always)]
     pub fn get_mut(this: &mut Self) -> Option<&mut T> {
         if Rc::strong_count(this) == 1 {
             // SAFETY: there is only one reference to Rc it's safe to make a mutable
@@ -219,7 +221,7 @@ impl<T> Rc<T> {
     /// let _y = Rc::clone(&x);
     /// assert_eq!(*Rc::try_unwrap(x).unwrap_err(), 4);
     /// ```
-    #[inline]
+    #[inline(always)]
     pub fn try_unwrap(this: Self) -> Result<T, Self> {
         if Rc::strong_count(&this) == 1 {
             // SAFETY: there is only one reference to Rc it's safe to move out value of T
@@ -263,7 +265,7 @@ impl<T> Rc<T> {
     /// let inner = Rc::unwrap_or_clone(rc2);
     /// assert!(ptr::eq(ptr, inner.as_ptr()));
     /// ```
-    #[inline]
+    #[inline(always)]
     pub fn unwrap_or_clone(this: Self) -> T
     where
         T: Clone,
@@ -288,6 +290,7 @@ unsafe fn decrease_counter(ptr: *mut ucount) -> ucount {
 
 impl<T> Deref for Rc<T> {
     type Target = T;
+    #[inline(always)]
     fn deref(&self) -> &Self::Target {
         // SAFETY: data will not be shared as mutable unless there is a single owner for
         // the data

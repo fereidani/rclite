@@ -26,7 +26,7 @@ RcLite is a lightweight reference-counting solution for Rust that serves as an a
 ## Why not use RcLite?
 
 - It does not provide weak references
-- With RcLite in 64-bit systems, you only can have `4,294,967,296 - 256` live references to an object. if you need to have `18,446,744,073,709,551,616` live references to an object, use the standard library. In other systems with smaller pointer sizes like 32-bit, you will have `usize::MAX` live references limitation that is the same as the standard library.
+- With RcLite in 64-bit systems, you only can have `4,294,967,296 - 256` live references to an object which requires about 32GBs of ram for holding all these references to this single object location. if you need to have `18,446,744,073,709,551,616` live references to an object, use the standard library. In other systems with smaller pointer sizes like 32-bit, you will have `usize::MAX` live references limitation that is the same as the standard library.
 
 ## Comparison
 

@@ -8,11 +8,11 @@ struct RcInner<T> {
 }
 
 /// [`Rc<T>`] is a reference-counting pointer for single-threaded use, for
-/// multi-threaded use cases you should use [`Arc<T>`][`crate::Arc<T>`]. [`Rc<T>`] provides
-/// shared ownership of a value of type T that is stored in the heap. When you
-/// clone an Rc, it creates a new pointer to the same heap allocation. When the
-/// last Rc pointer to the allocation is destroyed, the stored value is also
-/// dropped.
+/// multi-threaded use cases you should use [`Arc<T>`][`crate::Arc<T>`].
+/// [`Rc<T>`] provides shared ownership of a value of type T that is stored in
+/// the heap. When you clone an Rc, it creates a new pointer to the same heap
+/// allocation. When the last Rc pointer to the allocation is destroyed, the
+/// stored value is also dropped.
 pub struct Rc<T> {
     ptr: NonNull<RcInner<T>>,
     phantom: PhantomData<Box<RcInner<T>>>,
@@ -55,8 +55,8 @@ impl<T> Rc<T> {
     }
 
     /// Gives you a pointer to the data. The reference count stays the same and
-    /// the [`Rc<T>`] isn't used up. The pointer stays valid as long as there are
-    /// strong references to the [`Rc<T>`].
+    /// the [`Rc<T>`] isn't used up. The pointer stays valid as long as there
+    /// are strong references to the [`Rc<T>`].
     ///
     /// # Examples
     ///
@@ -76,8 +76,8 @@ impl<T> Rc<T> {
         self.ptr.as_ptr() as *const T
     }
 
-    /// Turns [`Rc<T>`] into a raw pointer, must be converted back to [`Rc<T>`] with
-    /// [`Rc::from_raw`] to avoid memory leak.
+    /// Turns [`Rc<T>`] into a raw pointer, must be converted back to [`Rc<T>`]
+    /// with [`Rc::from_raw`] to avoid memory leak.
     ///
     /// # Examples
     ///
@@ -154,8 +154,9 @@ impl<T> Rc<T> {
         unsafe { *self.inner().counter.get() }
     }
 
-    /// Compares if two [`Rc<T>`]s reference the same allocation, similar to ptr::eq.
-    /// Note: The same caveats apply when comparing dyn Trait pointers.
+    /// Compares if two [`Rc<T>`]s reference the same allocation, similar to
+    /// ptr::eq. Note: The same caveats apply when comparing dyn Trait
+    /// pointers.
     ///
     /// # Examples
     ///
@@ -269,20 +270,20 @@ impl<T> Rc<T> {
     {
         Rc::try_unwrap(this).unwrap_or_else(|rc| (*rc).clone())
     }
+}
 
-    #[inline(always)]
-    unsafe fn decrease_counter(&self) -> ucount {
-        let counter = &mut *self.inner().counter.get();
-        *counter = counter.wrapping_sub(1);
-        *counter
-    }
+#[inline(always)]
+unsafe fn increase_counter(ptr: *mut ucount) -> ucount {
+    let ret = (*ptr).wrapping_add(1);
+    *ptr = ret;
+    ret
+}
 
-    #[inline(always)]
-    unsafe fn increase_counter(&self) -> ucount {
-        let counter = &mut *self.inner().counter.get();
-        *counter = counter.wrapping_add(1);
-        *counter
-    }
+#[inline(always)]
+unsafe fn decrease_counter(ptr: *mut ucount) -> ucount {
+    let ret = (*ptr).wrapping_sub(1);
+    *ptr = ret;
+    ret
 }
 
 impl<T> Deref for Rc<T> {
@@ -304,10 +305,11 @@ impl<T> From<T> for Rc<T> {
 impl<T> Clone for Rc<T> {
     #[inline(always)]
     fn clone(&self) -> Self {
+        let counter_ptr = self.inner().counter.get();
         // SAFETY: counter is ensured to be used in single threaded environment only
-        let counter = unsafe { self.increase_counter() };
-        if counter == 0 {
-            unsafe { self.decrease_counter() };
+        let value = unsafe { increase_counter(counter_ptr) };
+        if value == 0 {
+            unsafe { decrease_counter(counter_ptr) };
             panic!("reference counter overflow");
         }
         Self {
@@ -320,9 +322,10 @@ impl<T> Clone for Rc<T> {
 impl<T> Drop for Rc<T> {
     #[inline(always)]
     fn drop(&mut self) {
+        let counter_ptr = self.inner().counter.get();
         // SAFETY: counter is ensured to be used in single threaded environment only
-        let counter = unsafe { self.decrease_counter() };
-        if counter == 0 {
+        let value = unsafe { decrease_counter(counter_ptr) };
+        if value == 0 {
             unsafe { Box::from_raw(self.ptr.as_mut()) };
         }
     }

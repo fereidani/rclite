@@ -6,8 +6,8 @@ use core::{fmt, marker::PhantomData, ops::Deref, pin::Pin, ptr::NonNull, sync::a
 // dropping an [`Arc<T>`] won't cause an incorrect drop of the `ArcInner` and a
 // dangling pointer for other references. The barrier allows enough space
 // between overflows based on the max possible number of CPU cores in the
-// system, making it impossible for an [`Arc<T>`] counter to actually overflow to 1,
-// no matter how many concurrent overflows occur. so if after panic thread
+// system, making it impossible for an [`Arc<T>`] counter to actually overflow
+// to 1, no matter how many concurrent overflows occur. so if after panic thread
 // unwinds, other threads can safely continue using their own Arc references.
 #[cfg(target_pointer_width = "64")]
 const BARRIER: ucount = 256;
@@ -121,8 +121,8 @@ impl<T> Arc<T> {
     }
 
     /// Gives you a pointer to the data. The reference count stays the same and
-    /// the [`Arc<T>`] isn't used up. The pointer stays valid as long as there are
-    /// strong references to the [`Arc<T>`].
+    /// the [`Arc<T>`] isn't used up. The pointer stays valid as long as there
+    /// are strong references to the [`Arc<T>`].
     ///
     /// # Examples
     ///
@@ -142,8 +142,8 @@ impl<T> Arc<T> {
         self.ptr.as_ptr() as *const T
     }
 
-    /// Turns [`Arc<T>`] into a raw pointer, must be converted back to [`Arc<T>`] with
-    /// [`Arc::from_raw`] to avoid memory leak.
+    /// Turns [`Arc<T>`] into a raw pointer, must be converted back to
+    /// [`Arc<T>`] with [`Arc::from_raw`] to avoid memory leak.
     ///
     /// # Examples
     ///
@@ -264,16 +264,22 @@ impl<T> From<T> for Arc<T> {
     }
 }
 
+#[inline(never)]
+fn drop_arc_no_inline<T>(ptr: NonNull<ArcInner<T>>) {
+    drop(Arc {
+        ptr,
+        phantom: PhantomData,
+    })
+}
+
 impl<T> Clone for Arc<T> {
     #[inline(always)]
     fn clone(&self) -> Self {
         if self.inner().counter.fetch_add(1, Ordering::Relaxed) >= ucount::MAX - BARRIER {
             // turn back the counter to its initial state as this function will not return a
-            // valid [`Arc<T>`]
-            drop(Self {
-                ptr: self.ptr,
-                phantom: PhantomData,
-            });
+            // valid [`Arc<T>`]. It uses `drop_arc_no_inline` to drop value to reduce
+            // overhead of clone inlining in user code.
+            drop_arc_no_inline(self.ptr);
             panic!("reference counter overflow");
         }
         Self {

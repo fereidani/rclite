@@ -1,6 +1,6 @@
 [package]
 name = "rclite"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2018"
 rust-version = "1.47"
 authors = ["Khashayar Fereidani"]
@@ -9,5 +9,5 @@ repository = "https://github.com/fereidani/rclite"
 documentation = "https://docs.rs/rclite"
 keywords = ["arc", "rc", "no_std"]
 categories = ["data-structures", "concurrency"]
-license = "MIT"
+license = "MIT OR Apache-2.0"
 readme = "README.md"

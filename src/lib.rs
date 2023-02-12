@@ -2,6 +2,8 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs, missing_debug_implementations)]
 
+extern crate alloc;
+
 #[cfg(target_pointer_width = "64")]
 pub(crate) use core::sync::atomic::AtomicU32 as AtomicCounter;
 #[cfg(target_pointer_width = "64")]

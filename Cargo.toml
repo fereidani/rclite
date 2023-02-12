@@ -2,6 +2,7 @@
 name = "rclite"
 version = "0.1.2"
 edition = "2018"
+rust-version = "1.47"
 authors = ["Khashayar Fereidani"]
 description = "The small reference counting solution for Rust"
 repository = "https://github.com/fereidani/rclite"

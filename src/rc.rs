@@ -1,9 +1,9 @@
 use crate::ucount;
 use alloc::boxed::Box;
-use core::{cell::UnsafeCell, fmt, marker::PhantomData, ops::Deref, pin::Pin, ptr::NonNull};
+use core::{cell::UnsafeCell, fmt, marker::PhantomData, ops::Deref, pin::Pin, ptr, ptr::NonNull};
 
 struct RcInner<T> {
-    data: T,
+    data: UnsafeCell<T>,
     counter: UnsafeCell<ucount>,
 }
 
@@ -30,7 +30,7 @@ impl<T> Rc<T> {
     #[inline(always)]
     pub fn new(data: T) -> Rc<T> {
         let inner = Box::new(RcInner {
-            data,
+            data: UnsafeCell::new(data),
             counter: UnsafeCell::new(1),
         });
         Rc {
@@ -176,6 +176,99 @@ impl<T> Rc<T> {
         this.ptr.as_ptr() == other.ptr.as_ptr()
     }
 
+    /// Returns a mutable reference to the inner value of an Rc, but only if
+    /// there are no other references to it. Returns None otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rclite::Rc;
+    ///
+    /// let mut x = Rc::new(3);
+    /// *Rc::get_mut(&mut x).unwrap() = 4;
+    /// assert_eq!(*x, 4);
+    ///
+    /// let _y = Rc::clone(&x);
+    /// assert!(Rc::get_mut(&mut x).is_none());
+    /// ```
+    #[inline]
+    pub fn get_mut(this: &mut Self) -> Option<&mut T> {
+        if Rc::strong_count(this) == 1 {
+            // SAFETY: there is only one reference to Rc it's safe to make a mutable
+            // reference
+            Some(unsafe { &mut *this.inner().data.get() })
+        } else {
+            None
+        }
+    }
+
+    /// If there's only one strong reference, returns the inner value. If not,
+    /// returns an error with the Rc passed in.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rclite::Rc;
+    ///
+    /// let x = Rc::new(3);
+    /// assert_eq!(Rc::try_unwrap(x).unwrap(), 3);
+    ///
+    /// let x = Rc::new(4);
+    /// let _y = Rc::clone(&x);
+    /// assert_eq!(*Rc::try_unwrap(x).unwrap_err(), 4);
+    /// ```
+    #[inline]
+    pub fn try_unwrap(this: Self) -> Result<T, Self> {
+        if Rc::strong_count(&this) == 1 {
+            // SAFETY: there is only one reference to Rc it's safe to move out value of T
+            // from Rc and destroy the container
+            unsafe {
+                let inner = Box::from_raw(this.ptr.as_ptr());
+                core::mem::forget(this);
+                let val = ptr::read(inner.data.get());
+                core::mem::forget(inner.data);
+                Ok(val)
+            }
+        } else {
+            Err(this)
+        }
+    }
+
+    /// If there's only one reference to T, remove it. Otherwise, make a copy of
+    /// T. If rc_t is of type Rc<T>, this function works like (*rc_t).clone(),
+    /// but will avoid copying the value if possible.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::ptr;
+    /// # use rclite::Rc;
+    /// let inner = String::from("test");
+    /// let ptr = inner.as_ptr();
+    ///
+    /// let rc = Rc::new(inner);
+    /// let inner = Rc::unwrap_or_clone(rc);
+    /// // The inner value was not cloned
+    /// assert!(ptr::eq(ptr, inner.as_ptr()));
+    ///
+    /// let rc = Rc::new(inner);
+    /// let rc2 = rc.clone();
+    /// let inner = Rc::unwrap_or_clone(rc);
+    /// // Because there were 2 references, we had to clone the inner value.
+    /// assert!(!ptr::eq(ptr, inner.as_ptr()));
+    /// // `rc2` is the last reference, so when we unwrap it we get back
+    /// // the original `String`.
+    /// let inner = Rc::unwrap_or_clone(rc2);
+    /// assert!(ptr::eq(ptr, inner.as_ptr()));
+    /// ```
+    #[inline]
+    pub fn unwrap_or_clone(this: Self) -> T
+    where
+        T: Clone,
+    {
+        Rc::try_unwrap(this).unwrap_or_else(|rc| (*rc).clone())
+    }
+
     #[inline(always)]
     unsafe fn decrease_counter(&self) -> ucount {
         let counter = &mut *self.inner().counter.get();
@@ -194,7 +287,9 @@ impl<T> Rc<T> {
 impl<T> Deref for Rc<T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
-        &self.inner().data
+        // SAFETY: data will not be shared as mutable unless there is a single owner for
+        // the data
+        unsafe { &*(self.inner().data.get() as *const T) }
     }
 }
 

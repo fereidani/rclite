@@ -1,7 +1,7 @@
 [package]
 name = "rclite"
-version = "0.1.1"
-edition = "2021"
+version = "0.1.2"
+edition = "2018"
 authors = ["Khashayar Fereidani"]
 description = "The small reference counting solution for Rust"
 repository = "https://github.com/fereidani/rclite"

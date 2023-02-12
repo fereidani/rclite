@@ -3,10 +3,10 @@ use alloc::boxed::Box;
 use core::{fmt, marker::PhantomData, ops::Deref, pin::Pin, ptr::NonNull, sync::atomic::Ordering};
 
 // The barrier prevents the counter value from overflowing, ensuring that
-// dropping an `Arc` won't cause an incorrect drop of the `ArcInner` and a
+// dropping an [`Arc<T>`] won't cause an incorrect drop of the `ArcInner` and a
 // dangling pointer for other references. The barrier allows enough space
 // between overflows based on the max possible number of CPU cores in the
-// system, making it impossible for an `Arc` counter to actually overflow to 1,
+// system, making it impossible for an [`Arc<T>`] counter to actually overflow to 1,
 // no matter how many concurrent overflows occur. so if after panic thread
 // unwinds, other threads can safely continue using their own Arc references.
 #[cfg(target_pointer_width = "64")]
@@ -23,8 +23,8 @@ struct ArcInner<T> {
     counter: AtomicCounter,
 }
 
-/// The Arc<T> type represents a thread-safe reference-counting pointer, where
-/// "Arc" stands for "Atomically Reference Counted". It provides shared
+/// The [`Arc<T>`] type represents a thread-safe reference-counting pointer,
+/// where "Arc" stands for "Atomically Reference Counted". It provides shared
 /// ownership of a value of type T, stored on the heap. When you call the clone
 /// method on Arc, a new instance of Arc is created that points to the same heap
 /// allocation as the original Arc, and the reference count is increased. Once
@@ -43,17 +43,17 @@ struct ArcInner<T> {
 ///
 /// ## Thread Safety
 ///
-/// Arc<T> is a thread-safe reference-counting pointer, meaning it's safe to use
-/// in multithreaded environments. However, this comes at a cost, as atomic
+/// [`Arc<T>`] is a thread-safe reference-counting pointer, meaning it's safe to
+/// use in multithreaded environments. However, this comes at a cost, as atomic
 /// operations are slower than regular memory accesses. If you're not sharing
-/// reference-counted values between threads, consider using Rc<T> instead,
-/// which has lower overhead.
+/// reference-counted values between threads, consider using
+/// [`Rc<T>`][`crate::Rc<T>`] instead, which has lower overhead.
 ///
-/// Arc<T> can be used with [Send] and [Sync] types only, so make sure that the
-/// type T you're using with it implements these traits. Keep in mind that
-/// Arc<T> only ensures thread safety for the reference count, not the data
+/// [`Arc<T>`] can be used with [Send] and [Sync] types only, so make sure that
+/// the type T you're using with it implements these traits. Keep in mind that
+/// [`Arc<T>`] only ensures thread safety for the reference count, not the data
 /// stored in it. To make the data itself thread-safe, you may need to pair
-/// Arc<T> with a [rclite] type, such as [Mutex<T>][mutex].
+/// [`Arc<T>`] with a `Send`+`Sync` type, such as `std::sync::Mutex<T>`.
 ///
 /// # Cloning references
 ///
@@ -68,10 +68,10 @@ struct ArcInner<T> {
 /// let b = Arc::clone(&foo);
 /// // a, b, and foo are all Arcs that point to the same memory location
 /// ```
-// Arc<T> can be used as if it were of type T by using the [Deref][deref] trait. To call methods of
-// Arc<T>, use fully qualified syntax, such as Arc::clone(). You can also call traits like Clone on
-// Arc<T> using fully qualified syntax. The choice between using fully qualified syntax or
-// method-call syntax is a matter of personal preference.
+// [`Arc<T>`] can be used as if it were of type T by using the [Deref][deref] trait. To call methods
+// of [`Arc<T>`], use fully qualified syntax, such as Arc::clone(). You can also call traits like
+// Clone on [`Arc<T>`] using fully qualified syntax. The choice between using fully qualified syntax
+// or method-call syntax is a matter of personal preference.
 ///
 /// ```
 /// use rclite::Arc;
@@ -91,7 +91,7 @@ unsafe impl<T: Sync + Send> Send for Arc<T> {}
 unsafe impl<T: Sync + Send> Sync for Arc<T> {}
 
 impl<T> Arc<T> {
-    /// Constructs a new `Arc<T>`.
+    /// Constructs a new [`Arc<T>`].
     ///
     /// # Examples
     ///
@@ -121,8 +121,8 @@ impl<T> Arc<T> {
     }
 
     /// Gives you a pointer to the data. The reference count stays the same and
-    /// the `Arc` isn't used up. The pointer stays valid as long as there are
-    /// strong references to the `Arc`.
+    /// the [`Arc<T>`] isn't used up. The pointer stays valid as long as there are
+    /// strong references to the [`Arc<T>`].
     ///
     /// # Examples
     ///
@@ -138,12 +138,12 @@ impl<T> Arc<T> {
     #[inline(always)]
     #[must_use]
     pub fn as_ptr(&self) -> *const T {
-        // SAFETY: ptr is valid, as self is a valid instance of `Arc`
+        // SAFETY: ptr is valid, as self is a valid instance of [`Arc<T>`]
         self.ptr.as_ptr() as *const T
     }
 
-    /// Turns `Arc` into a raw pointer, must be converted back to `Arc` with
-    /// `Arc::from_raw` to avoid memory leak.
+    /// Turns [`Arc<T>`] into a raw pointer, must be converted back to [`Arc<T>`] with
+    /// [`Arc::from_raw`] to avoid memory leak.
     ///
     /// # Examples
     ///
@@ -162,13 +162,13 @@ impl<T> Arc<T> {
         ptr
     }
 
-    /// Constructs an Arc<T> from a raw pointer. The raw pointer must have been
-    /// from Arc<U>::into_raw where U and T must have the same size and
-    /// alignment. Improper use may lead to memory unsafe operations.
+    /// Constructs an [`Arc<T>`] from a raw pointer. The raw pointer must have
+    /// been from [`Arc<U>::into_raw`] where U and T must have the same size
+    /// and alignment. Improper use may lead to memory unsafe operations.
     ///
     /// # Safety
     /// It's only safe to construct back references that are generated with
-    /// `Arc::into_raw`, converting any other references may lead to undefined
+    /// [`Arc::into_raw`], converting any other references may lead to undefined
     /// behaivior.
     ///
     /// # Examples
@@ -180,11 +180,11 @@ impl<T> Arc<T> {
     /// let x_ptr = Arc::into_raw(x);
     ///
     /// unsafe {
-    ///     // Convert back to an `Arc` to prevent leak.
+    ///     // Convert back to an [`Arc<T>`] to prevent leak.
     ///     let x = Arc::from_raw(x_ptr);
     ///     assert_eq!(&*x, "hello");
     ///
-    ///     // Further calls to `Arc::from_raw(x_ptr)` would be memory-unsafe.
+    ///     // Further calls to [`Arc::from_raw(x_ptr)`] would be memory-unsafe.
     /// }
     ///
     /// // The memory was freed when `x` went out of scope above, so `x_ptr` is now dangling!
@@ -210,7 +210,7 @@ impl<T> Arc<T> {
     /// let _also_five = Arc::clone(&five);
     ///
     /// // This assertion is deterministic because we haven't shared
-    /// // the `Arc` between threads.
+    /// // the [`Arc<T>`] between threads.
     /// assert_eq!(2, Arc::strong_count(&five));
     /// ```
     #[inline(always)]
@@ -269,7 +269,7 @@ impl<T> Clone for Arc<T> {
     fn clone(&self) -> Self {
         if self.inner().counter.fetch_add(1, Ordering::Relaxed) >= ucount::MAX - BARRIER {
             // turn back the counter to its initial state as this function will not return a
-            // valid `Arc<T>`
+            // valid [`Arc<T>`]
             self.inner().counter.fetch_sub(1, Ordering::Relaxed);
             panic!("reference counter overflow");
         }

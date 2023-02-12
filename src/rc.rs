@@ -7,7 +7,8 @@ struct RcInner<T> {
     counter: UnsafeCell<ucount>,
 }
 
-/// Rc<T> is a reference-counting pointer for single-threaded use. It provides
+/// [`Rc<T>`] is a reference-counting pointer for single-threaded use, for
+/// multi-threaded use cases you should use [`Arc<T>`][`crate::Arc<T>`]. [`Rc<T>`] provides
 /// shared ownership of a value of type T that is stored in the heap. When you
 /// clone an Rc, it creates a new pointer to the same heap allocation. When the
 /// last Rc pointer to the allocation is destroyed, the stored value is also
@@ -18,7 +19,7 @@ pub struct Rc<T> {
 }
 
 impl<T> Rc<T> {
-    /// Constructs a new `Rc<T>`.
+    /// Constructs a new [`Rc<T>`].
     ///
     /// # Examples
     ///
@@ -54,8 +55,8 @@ impl<T> Rc<T> {
     }
 
     /// Gives you a pointer to the data. The reference count stays the same and
-    /// the `Rc` isn't used up. The pointer stays valid as long as there are
-    /// strong references to the `Rc`.
+    /// the [`Rc<T>`] isn't used up. The pointer stays valid as long as there are
+    /// strong references to the [`Rc<T>`].
     ///
     /// # Examples
     ///
@@ -71,12 +72,12 @@ impl<T> Rc<T> {
     #[inline(always)]
     #[must_use]
     pub fn as_ptr(&self) -> *const T {
-        // SAFETY: ptr is valid, as self is a valid instance of `Rc`
+        // SAFETY: ptr is valid, as self is a valid instance of [`Rc<T>`]
         self.ptr.as_ptr() as *const T
     }
 
-    /// Turns `Rc` into a raw pointer, must be converted back to `Rc` with
-    /// `Rc::from_raw` to avoid memory leak.
+    /// Turns [`Rc<T>`] into a raw pointer, must be converted back to [`Rc<T>`] with
+    /// [`Rc::from_raw`] to avoid memory leak.
     ///
     /// # Examples
     ///
@@ -95,13 +96,13 @@ impl<T> Rc<T> {
         ptr
     }
 
-    /// Constructs an Rc<T> from a raw pointer. The raw pointer must have been
-    /// from Rc<U>::into_raw where U and T must have the same size and
-    /// alignment. Improper use may lead to memory unsafe operations.
+    /// Constructs an [`Rc<T>`] from a raw pointer. The raw pointer must have
+    /// been from [`Rc<U>::into_raw`] where U and T must have the same size
+    /// and alignment. Improper use may lead to memory unsafe operations.
     ///
     /// # Safety
     /// It's only safe to construct back references that are generated with
-    /// `Rc::into_raw`, converting any other references may lead to undefined
+    /// [`Rc::into_raw`], converting any other references may lead to undefined
     /// behaivior.
     ///
     /// # Examples
@@ -113,11 +114,11 @@ impl<T> Rc<T> {
     /// let x_ptr = Rc::into_raw(x);
     ///
     /// unsafe {
-    ///     // Convert back to an `Rc` to prevent leak.
+    ///     // Convert back to an [`Rc<T>`] to prevent leak.
     ///     let x = Rc::from_raw(x_ptr);
     ///     assert_eq!(&*x, "hello");
     ///
-    ///     // Further calls to `Rc::from_raw(x_ptr)` would be memory-unsafe.
+    ///     // Further calls to [`Rc::from_raw(x_ptr)`] would be memory-unsafe.
     /// }
     ///
     /// // The memory was freed when `x` went out of scope above, so `x_ptr` is now dangling!
@@ -142,7 +143,7 @@ impl<T> Rc<T> {
     /// let _also_five = Rc::clone(&five);
     ///
     /// // This assertion is deterministic because we haven't shared
-    /// // the `Rc` between threads.
+    /// // the [`Rc<T>`] between threads.
     /// assert_eq!(2, Rc::strong_count(&five));
     /// ```
     #[inline(always)]
@@ -153,7 +154,7 @@ impl<T> Rc<T> {
         unsafe { *self.inner().counter.get() }
     }
 
-    /// Compares if two `Rc`s reference the same allocation, similar to ptr::eq.
+    /// Compares if two [`Rc<T>`]s reference the same allocation, similar to ptr::eq.
     /// Note: The same caveats apply when comparing dyn Trait pointers.
     ///
     /// # Examples
@@ -235,8 +236,8 @@ impl<T> Rc<T> {
     }
 
     /// If there's only one reference to T, remove it. Otherwise, make a copy of
-    /// T. If rc_t is of type Rc<T>, this function works like (*rc_t).clone(),
-    /// but will avoid copying the value if possible.
+    /// T. If rc_t is of type [`Rc<T>`], this function works like
+    /// (*rc_t).clone(), but will avoid copying the value if possible.
     ///
     /// # Examples
     ///

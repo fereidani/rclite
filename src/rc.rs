@@ -318,6 +318,7 @@ impl<T> Clone for Rc<T> {
 }
 
 impl<T> Drop for Rc<T> {
+    #[inline(always)]
     fn drop(&mut self) {
         // SAFETY: counter is ensured to be used in single threaded environment only
         let counter = unsafe { self.decrease_counter() };

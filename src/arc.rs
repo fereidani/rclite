@@ -242,6 +242,73 @@ impl<T> Arc<T> {
         this.ptr.as_ptr() == other.ptr.as_ptr()
     }
 
+    /// If there's only one strong reference, returns the inner value. If not,
+    /// returns an error with the Arc passed in.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rclite::Arc;
+    ///
+    /// let x = Arc::new(3);
+    /// assert_eq!(Arc::try_unwrap(x).unwrap(), 3);
+    ///
+    /// let x = Arc::new(4);
+    /// let _y = Arc::clone(&x);
+    /// assert_eq!(*Arc::try_unwrap(x).unwrap_err(), 4);
+    /// ```
+    #[inline]
+    pub fn try_unwrap(this: Self) -> Result<T, Self> {
+        if Arc::strong_count(&this) == 1 {
+            // SAFETY: there is only one reference to Arc it's safe to move out value of T
+            // from Arc and destroy the container
+            unsafe {
+                let inner = Box::from_raw(this.ptr.as_ptr());
+                core::mem::forget(this);
+                let val = core::ptr::read(&inner.data);
+                core::mem::forget(inner.data);
+                Ok(val)
+            }
+        } else {
+            Err(this)
+        }
+    }
+
+    /// If there's only one reference to T, remove it. Otherwise, make a copy of
+    /// T. If rc_t is of type [`Arc<T>`], this function works like
+    /// (*rc_t).clone(), but will avoid copying the value if possible.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::ptr;
+    /// # use rclite::Arc;
+    /// let inner = String::from("test");
+    /// let ptr = inner.as_ptr();
+    ///
+    /// let rc = Arc::new(inner);
+    /// let inner = Arc::unwrap_or_clone(rc);
+    /// // The inner value was not cloned
+    /// assert!(ptr::eq(ptr, inner.as_ptr()));
+    ///
+    /// let rc = Arc::new(inner);
+    /// let rc2 = rc.clone();
+    /// let inner = Arc::unwrap_or_clone(rc);
+    /// // Because there were 2 references, we had to clone the inner value.
+    /// assert!(!ptr::eq(ptr, inner.as_ptr()));
+    /// // `rc2` is the last reference, so when we unwrap it we get back
+    /// // the original `String`.
+    /// let inner = Arc::unwrap_or_clone(rc2);
+    /// assert!(ptr::eq(ptr, inner.as_ptr()));
+    /// ```
+    #[inline]
+    pub fn unwrap_or_clone(this: Self) -> T
+    where
+        T: Clone,
+    {
+        Arc::try_unwrap(this).unwrap_or_else(|rc| (*rc).clone())
+    }
+
     #[inline(always)]
     fn inner(&self) -> &ArcInner<T> {
         // SAFETY: inner is protected by counter, it will not get released unless drop

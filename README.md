@@ -1,4 +1,4 @@
-# RcLite: The small reference counting solution for Rust
+# RcLite: small, fast, and memory-friendly reference counting
 
 [![Crates.io][crates-badge]][crates-url]
 [![Documentation][doc-badge]][doc-url]
@@ -20,25 +20,29 @@ RcLite is a lightweight reference-counting solution for Rust that serves as an a
 
 - It's faster and smaller
 - Uses less memory
-- It provides drop-in replacements for standard library `std::sync::Arc` and `std::rc::Rc` without weak reference feature
+- It provides lightweight drop-in replacements for standard library `std::sync::Arc` and `std::rc::Rc`
 - It supports `no_std` with extern alloc
 
 ## Why not use RcLite?
 
 - It does not provide weak references
+- It does not support data as DSTs
 - With RcLite in 64-bit systems, you only can have `4,294,967,296 - 256` live references to an object which requires about 32GBs of ram for holding all these references to this single object location. if you need to have `18,446,744,073,709,551,616` live references to an object, use the standard library. In other systems with smaller pointer sizes like 32-bit, you will have `usize::MAX` live references limitation that is the same as the standard library.
 
 ## Comparison
 
-|                            | rclite::Arc | std::sync::Arc |
-| -------------------------- | :---------: | :------------: |
-| Overhead in 64-bit systems |   4 bytes   |    16 bytes    |
-| Overhead in 32-bit systems |   4 bytes   |    8 bytes     |
-| Overhead in 16-bit systems |   2 bytes   |    4 bytes     |
-| Weak References            |     ❌      |       ✅       |
+|                            | rclite::{Arc,Rc} | std::\*::{Arc,Rc} |
+| -------------------------- | :--------------: | :---------------: |
+| Overhead in 64-bit systems |     4 bytes      |     16 bytes      |
+| Overhead in 32-bit systems |     4 bytes      |      8 bytes      |
+| Overhead in 16-bit systems |     2 bytes      |      4 bytes      |
+| Weak References            |        ❌        |        ✅         |
+| DST Support                |        ❌        |        ✅         |
 
 In 64-bit systems, RcLite has an advantage over the standard library's Arc as it can utilize the memory padding area, using only 4 bytes to store the counter. This results in a reduction in memory usage, as there is less memory waste on padding. However, in situations where there is not enough padding available in the structure, RcLite will have an overhead of 8 bytes, which is still half of the standard library's overhead.
 
 For instance, in 64-bit systems, `Rc<u32>` and `Arc<u32>` allocate the same amount of memory as `Box<u32>`, since the `Box<u32>` allocation will be padded to `u64` by the allocator.
 
 In 32-bit and 16-bit systems, the overhead of the RcLite will be 50% of the standard library.
+
+RcLite's structure is similar to a `Box<(T,counter)>`, where the counter is stored after the data, as opposed to being the first field in the standard library. This eliminates the need for pointer calculation when accessing the data, but also restricts RcLite from supporting DSTs.

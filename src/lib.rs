@@ -1,5 +1,5 @@
 #![no_std]
-//! # RcLite: The small reference counting solution for Rust
+//! # RcLite: small, fast, and memory-friendly reference counting
 //!
 //! [![Crates.io][crates-badge]][crates-url]
 //! [![Documentation][doc-badge]][doc-url]
@@ -27,13 +27,14 @@
 //!
 //! - It's faster and smaller
 //! - Uses less memory
-//! - It provides drop-in replacements for standard library `std::sync::Arc` and
-//!   `std::rc::Rc` without weak reference feature
+//! - It provides a lightweight drop-in replacements for standard library
+//!   `std::sync::Arc` and `std::rc::Rc`
 //! - It supports `no_std` with extern alloc
 //!
 //! ## Why not use RcLite?
 //!
 //! - It does not provide weak references
+//! - It does not support data as DSTs
 //! - With RcLite in 64-bit systems, you only can have `4,294,967,296 - 256`
 //!   live references to an object which requires about 32GBs of ram for holding
 //!   all these references to this single object location. if you need to have
@@ -44,12 +45,13 @@
 //!
 //! ## Comparison
 //!
-//! |                            | rclite::Arc | std::sync::Arc |
-//! | -------------------------- | :---------: | :------------: |
-//! | Overhead in 64-bit systems |   4 bytes   |    16 bytes    |
-//! | Overhead in 32-bit systems |   4 bytes   |    8 bytes     |
-//! | Overhead in 16-bit systems |   2 bytes   |    4 bytes     |
-//! | Weak References            |     ❌      |       ✅       |
+//! |                            | rclite::{Arc,Rc} | std::\*::{Arc,Rc} |
+//! | -------------------------- | :--------------: | :---------------: |
+//! | Overhead in 64-bit systems |     4 bytes      |     16 bytes      |
+//! | Overhead in 32-bit systems |     4 bytes      |      8 bytes      |
+//! | Overhead in 16-bit systems |     2 bytes      |      4 bytes      |
+//! | Weak References            |        ❌        |        ✅         |
+//! | DST Support                |        ❌        |        ✅         |
 //!
 //! In 64-bit systems, RcLite has an advantage over the standard library's Arc
 //! as it can utilize the memory padding area, using only 4 bytes to store the

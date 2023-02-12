@@ -1,6 +1,15 @@
 use crate::{ucount, AtomicCounter};
 use alloc::boxed::Box;
-use core::{fmt, marker::PhantomData, ops::Deref, pin::Pin, ptr::NonNull, sync::atomic::Ordering};
+use core::{
+    cell::UnsafeCell,
+    fmt,
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+    ops::Deref,
+    pin::Pin,
+    ptr::NonNull,
+    sync::atomic::Ordering,
+};
 
 // The barrier prevents the counter value from overflowing, ensuring that
 // dropping an [`Arc<T>`] won't cause an incorrect drop of the `ArcInner` and a
@@ -19,7 +28,7 @@ const BARRIER: ucount = 0;
 const BARRIER: ucount = 0;
 
 struct ArcInner<T> {
-    data: T,
+    data: UnsafeCell<T>,
     counter: AtomicCounter,
 }
 
@@ -103,7 +112,7 @@ impl<T> Arc<T> {
     #[inline(always)]
     pub fn new(data: T) -> Arc<T> {
         let inner = Box::new(ArcInner {
-            data,
+            data: UnsafeCell::new(data),
             counter: AtomicCounter::new(1),
         });
         Arc {
@@ -267,7 +276,7 @@ impl<T> Arc<T> {
             unsafe {
                 let inner = Box::from_raw(this.ptr.as_ptr());
                 core::mem::forget(this);
-                let val = core::ptr::read(&inner.data);
+                let val = core::ptr::read(inner.data.get());
                 core::mem::forget(inner.data);
                 Ok(val)
             }
@@ -323,7 +332,7 @@ impl<T> Deref for Arc<T> {
     type Target = T;
     #[inline(always)]
     fn deref(&self) -> &Self::Target {
-        &self.inner().data
+        unsafe { &*(self.inner().data.get() as *const T) }
     }
 }
 
@@ -369,8 +378,78 @@ impl<T> Drop for Arc<T> {
     }
 }
 
-impl<T: fmt::Debug> fmt::Debug for Arc<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Arc<T>")
+impl<T: Hash> Hash for Arc<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (**self).hash(state);
     }
 }
+
+impl<T: fmt::Display> fmt::Display for Arc<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&**self, f)
+    }
+}
+
+impl<T: fmt::Debug> fmt::Debug for Arc<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&**self, f)
+    }
+}
+
+impl<T> fmt::Pointer for Arc<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Pointer::fmt(&(&**self as *const T), f)
+    }
+}
+
+impl<T: Default> Default for Arc<T> {
+    #[inline(always)]
+    fn default() -> Arc<T> {
+        Arc::new(Default::default())
+    }
+}
+
+impl<T: PartialEq> PartialEq for Arc<T> {
+    #[inline(always)]
+    fn eq(&self, other: &Arc<T>) -> bool {
+        self.deref().eq(other)
+    }
+}
+
+impl<T: Eq> Eq for Arc<T> {}
+
+impl<T: PartialOrd> PartialOrd for Arc<T> {
+    #[inline(always)]
+    fn partial_cmp(&self, other: &Arc<T>) -> Option<core::cmp::Ordering> {
+        (**self).partial_cmp(&**other)
+    }
+
+    #[inline(always)]
+    fn lt(&self, other: &Arc<T>) -> bool {
+        **self < **other
+    }
+
+    #[inline(always)]
+    fn le(&self, other: &Arc<T>) -> bool {
+        **self <= **other
+    }
+
+    #[inline(always)]
+    fn gt(&self, other: &Arc<T>) -> bool {
+        **self > **other
+    }
+
+    #[inline(always)]
+    fn ge(&self, other: &Arc<T>) -> bool {
+        **self >= **other
+    }
+}
+
+impl<T: Ord> Ord for Arc<T> {
+    #[inline(always)]
+    fn cmp(&self, other: &Arc<T>) -> core::cmp::Ordering {
+        (**self).cmp(&**other)
+    }
+}
+
+impl<T> Unpin for Arc<T> {}

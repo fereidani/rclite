@@ -1,6 +1,15 @@
 use crate::ucount;
 use alloc::boxed::Box;
-use core::{cell::UnsafeCell, fmt, marker::PhantomData, ops::Deref, pin::Pin, ptr, ptr::NonNull};
+use core::{
+    cell::UnsafeCell,
+    fmt,
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+    ops::Deref,
+    pin::Pin,
+    ptr,
+    ptr::NonNull,
+};
 
 struct RcInner<T> {
     data: UnsafeCell<T>,
@@ -334,8 +343,76 @@ impl<T> Drop for Rc<T> {
     }
 }
 
+impl<T: Hash> Hash for Rc<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (**self).hash(state);
+    }
+}
+
+impl<T: fmt::Display> fmt::Display for Rc<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&**self, f)
+    }
+}
+
 impl<T: fmt::Debug> fmt::Debug for Rc<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Rc<T>")
+        fmt::Debug::fmt(&**self, f)
+    }
+}
+
+impl<T> fmt::Pointer for Rc<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Pointer::fmt(&(&**self as *const T), f)
+    }
+}
+
+impl<T: Default> Default for Rc<T> {
+    #[inline(always)]
+    fn default() -> Rc<T> {
+        Rc::new(Default::default())
+    }
+}
+
+impl<T: PartialEq> PartialEq for Rc<T> {
+    #[inline(always)]
+    fn eq(&self, other: &Rc<T>) -> bool {
+        self.deref().eq(other)
+    }
+}
+
+impl<T: Eq> Eq for Rc<T> {}
+
+impl<T: PartialOrd> PartialOrd for Rc<T> {
+    #[inline(always)]
+    fn partial_cmp(&self, other: &Rc<T>) -> Option<core::cmp::Ordering> {
+        (**self).partial_cmp(&**other)
+    }
+
+    #[inline(always)]
+    fn lt(&self, other: &Rc<T>) -> bool {
+        **self < **other
+    }
+
+    #[inline(always)]
+    fn le(&self, other: &Rc<T>) -> bool {
+        **self <= **other
+    }
+
+    #[inline(always)]
+    fn gt(&self, other: &Rc<T>) -> bool {
+        **self > **other
+    }
+
+    #[inline(always)]
+    fn ge(&self, other: &Rc<T>) -> bool {
+        **self >= **other
+    }
+}
+
+impl<T: Ord> Ord for Rc<T> {
+    #[inline(always)]
+    fn cmp(&self, other: &Rc<T>) -> core::cmp::Ordering {
+        (**self).cmp(&**other)
     }
 }

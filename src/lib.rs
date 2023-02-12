@@ -58,9 +58,9 @@
 //! padding available in the structure, RcLite will have an overhead of 8 bytes,
 //! which is still half of the standard library's overhead.
 //!
-//! For instance, in 64-bit systems, Rc<u32> and Arc<u32> allocate the same
-//! amount of memory as Box<u32>, since the Box<u32> allocation will be padded
-//! to u64 by the allocator.
+//! For instance, in 64-bit systems, `Rc<u32>` and `Arc<u32>` allocate the same
+//! amount of memory as `Box<u32>`, since the `Box<u32>` allocation will be
+//! padded to `u64` by the allocator.
 //!
 //! In 32-bit and 16-bit systems, the overhead of the RcLite will be 50% of the
 //! standard library.

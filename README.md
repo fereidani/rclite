@@ -39,6 +39,6 @@ RcLite is a lightweight reference-counting solution for Rust that serves as an a
 
 In 64-bit systems, RcLite has an advantage over the standard library's Arc as it can utilize the memory padding area, using only 4 bytes to store the counter. This results in a reduction in memory usage, as there is less memory waste on padding. However, in situations where there is not enough padding available in the structure, RcLite will have an overhead of 8 bytes, which is still half of the standard library's overhead.
 
-For instance, in 64-bit systems, Rc<u32> and Arc<u32> allocate the same amount of memory as Box<u32>, since the Box<u32> allocation will be padded to u64 by the allocator.
+For instance, in 64-bit systems, `Rc<u32>` and `Arc<u32>` allocate the same amount of memory as `Box<u32>`, since the `Box<u32>` allocation will be padded to `u64` by the allocator.
 
 In 32-bit and 16-bit systems, the overhead of the RcLite will be 50% of the standard library.

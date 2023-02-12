@@ -270,7 +270,10 @@ impl<T> Clone for Arc<T> {
         if self.inner().counter.fetch_add(1, Ordering::Relaxed) >= ucount::MAX - BARRIER {
             // turn back the counter to its initial state as this function will not return a
             // valid [`Arc<T>`]
-            self.inner().counter.fetch_sub(1, Ordering::Relaxed);
+            drop(Self {
+                ptr: self.ptr,
+                phantom: PhantomData,
+            });
             panic!("reference counter overflow");
         }
         Self {
@@ -281,6 +284,7 @@ impl<T> Clone for Arc<T> {
 }
 
 impl<T> Drop for Arc<T> {
+    #[inline(always)]
     fn drop(&mut self) {
         if self.inner().counter.fetch_sub(1, Ordering::AcqRel) == 1 {
             // SAFETY: this is the last owner of the ptr, it is safe to drop data

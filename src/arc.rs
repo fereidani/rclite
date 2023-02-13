@@ -8,7 +8,7 @@ use core::{
     ops::Deref,
     pin::Pin,
     ptr::NonNull,
-    sync::atomic::Ordering,
+    sync::atomic::{fence, Ordering},
 };
 
 // The barrier prevents the counter value from overflowing, ensuring that
@@ -371,10 +371,12 @@ impl<T> Clone for Arc<T> {
 impl<T> Drop for Arc<T> {
     #[inline(always)]
     fn drop(&mut self) {
-        if self.inner().counter.fetch_sub(1, Ordering::AcqRel) == 1 {
-            // SAFETY: this is the last owner of the ptr, it is safe to drop data
-            unsafe { Box::from_raw(self.ptr.as_ptr()) };
+        if self.inner().counter.fetch_sub(1, Ordering::Release) != 1 {
+            return;
         }
+        fence(Ordering::Acquire);
+        // SAFETY: this is the last owner of the ptr, it is safe to drop data
+        unsafe { Box::from_raw(self.ptr.as_ptr()) };
     }
 }
 

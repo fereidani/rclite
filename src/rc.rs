@@ -416,3 +416,5 @@ impl<T: Ord> Ord for Rc<T> {
         (**self).cmp(&**other)
     }
 }
+
+impl<T> Unpin for Rc<T> {}

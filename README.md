@@ -43,6 +43,6 @@ In 64-bit systems, RcLite has an advantage over the standard library's Arc as it
 
 For instance, in 64-bit systems, `Rc<u32>` and `Arc<u32>` allocate the same amount of memory as `Box<u32>`, since the `Box<u32>` allocation will be padded to `u64` by the allocator.
 
-In 32-bit and 16-bit systems, the overhead of the RcLite will be 50% of the standard library.
+In 32-bit and 16-bit systems, the memory overhead of the RcLite will be 50% of the standard library.
 
 RcLite's structure is similar to a `Box<(T,counter)>`, where the counter is stored after the data, as opposed to being the first field in the standard library. This eliminates the need for pointer calculation when accessing the data, but also restricts RcLite from supporting DSTs.

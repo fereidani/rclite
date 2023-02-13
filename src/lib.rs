@@ -64,7 +64,7 @@
 //! amount of memory as `Box<u32>`, since the `Box<u32>` allocation will be
 //! padded to `u64` by the allocator.
 //!
-//! In 32-bit and 16-bit systems, the overhead of the RcLite will be 50% of the
+//! In 32-bit and 16-bit systems, the memory overhead of the RcLite will be 50% of the
 //! standard library.
 
 #![warn(missing_docs, missing_debug_implementations)]

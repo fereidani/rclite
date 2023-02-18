@@ -48,8 +48,8 @@
 //! |                            | rclite::{Arc,Rc} | std::\*::{Arc,Rc} |
 //! | -------------------------- | :--------------: | :---------------: |
 //! | Overhead in 64-bit systems |     4 bytes      |     16 bytes      |
-//! | Overhead in 32-bit systems |     4 bytes      |      8 bytes      |
-//! | Overhead in 16-bit systems |     2 bytes      |      4 bytes      |
+//! | Overhead in 32-bit systems |   4 or 2 bytes   |      8 bytes      |
+//! | Overhead in 16-bit systems |   2 or 1 bytes   |      4 bytes      |
 //! | Weak References            |        ❌        |        ✅         |
 //! | DST Support                |        ❌        |        ✅         |
 //!
@@ -64,23 +64,57 @@
 //! amount of memory as `Box<u32>`, since the `Box<u32>` allocation will be
 //! padded to `u64` by the allocator.
 //!
-//! In 32-bit and 16-bit systems, the memory overhead of the RcLite will be 50% of the
-//! standard library.
+//! In 32-bit and 16-bit systems, the memory overhead of the RcLite will be 50%
+//! of the standard library.
+//!
+//! ### Features
+//!
+//! By default, RcLite employs a counter size of half the word size only for
+//! 64-bit systems, as overflowing a 32-bit counter is harder compared to
+//! overflowing 16-bit counters. For users who desire to use the half register
+//! size on other platforms, the `small` feature is available. Enabling this
+//! feature results in the use of 16-bit counters in 32-bit platforms and 8-bit
+//! counters in 16-bit platforms.
 
 #![warn(missing_docs, missing_debug_implementations)]
 extern crate alloc;
 
+// Arc counter definition
+
 #[cfg(target_pointer_width = "64")]
 pub(crate) use core::sync::atomic::AtomicU32 as AtomicCounter;
+
+#[cfg(all(
+    not(target_pointer_width = "64"),
+    not(target_pointer_width = "16"),
+    not(target_pointer_width = "8"),
+    not(feature = "small"),
+))]
+pub(crate) use core::sync::atomic::AtomicUsize as AtomicCounter;
+
+#[cfg(all(target_pointer_width = "32", feature = "small"))]
+pub(crate) use core::sync::atomic::AtomicU16 as AtomicCounter;
+
+// Rc counter definition
+
 #[cfg(target_pointer_width = "64")]
 pub(crate) use u32 as ucount;
 
-#[cfg(not(target_pointer_width = "64"))]
-pub(crate) use core::sync::atomic::AtomicUsize as AtomicCounter;
-#[cfg(not(target_pointer_width = "64"))]
+#[cfg(all(not(target_pointer_width = "64"), not(feature = "small")))]
 pub(crate) use usize as ucount;
 
+#[cfg(all(target_pointer_width = "32", feature = "small"))]
+pub(crate) use u16 as ucount;
+
+#[cfg(all(target_pointer_width = "16", feature = "small"))]
+pub(crate) use u8 as ucount;
+
+#[cfg(all(target_pointer_width = "8", feature = "small"))]
+pub(crate) use usize as ucount;
+
+#[cfg(all(not(target_pointer_width = "16"), not(target_pointer_width = "8")))]
 mod arc;
 mod rc;
+#[cfg(all(not(target_pointer_width = "16"), not(target_pointer_width = "8")))]
 pub use arc::*;
 pub use rc::*;

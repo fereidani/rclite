@@ -34,8 +34,8 @@ RcLite is a lightweight reference-counting solution for Rust that serves as an a
 |                            | rclite::{Arc,Rc} | std::\*::{Arc,Rc} |
 | -------------------------- | :--------------: | :---------------: |
 | Overhead in 64-bit systems |     4 bytes      |     16 bytes      |
-| Overhead in 32-bit systems |     4 bytes      |      8 bytes      |
-| Overhead in 16-bit systems |     2 bytes      |      4 bytes      |
+| Overhead in 32-bit systems |   4 or 2 bytes   |      8 bytes      |
+| Overhead in 16-bit systems |   2 or 1 bytes   |      4 bytes      |
 | Weak References            |        ❌        |        ✅         |
 | DST Support                |        ❌        |        ✅         |
 
@@ -46,3 +46,7 @@ For instance, in 64-bit systems, `Rc<u32>` and `Arc<u32>` allocate the same amou
 In 32-bit and 16-bit systems, the memory overhead of the RcLite will be 50% of the standard library.
 
 RcLite's structure is similar to a `Box<(T,counter)>`, where the counter is stored after the data, as opposed to being the first field in the standard library. This eliminates the need for pointer calculation when accessing the data, but also restricts RcLite from supporting DSTs.
+
+### Features
+
+By default, RcLite employs a counter size of half the word size only for 64-bit systems, as overflowing a 32-bit counter is harder compared to overflowing 16-bit counters. For users who desire to use the half register size on other platforms, the `small` feature is available. Enabling this feature results in the use of 16-bit counters in 32-bit platforms and 8-bit counters in 16-bit platforms.

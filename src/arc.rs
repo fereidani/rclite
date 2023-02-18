@@ -22,10 +22,6 @@ use core::{
 const BARRIER: ucount = 256;
 #[cfg(target_pointer_width = "32")]
 const BARRIER: ucount = 8;
-#[cfg(target_pointer_width = "16")]
-const BARRIER: ucount = 0;
-#[cfg(target_pointer_width = "8")]
-const BARRIER: ucount = 0;
 
 struct ArcInner<T> {
     data: UnsafeCell<T>,

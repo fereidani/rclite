@@ -11,6 +11,7 @@ use core::{
     ptr::NonNull,
 };
 
+#[repr(C)]
 struct RcInner<T> {
     data: UnsafeCell<T>,
     counter: UnsafeCell<ucount>,

@@ -23,6 +23,7 @@ const BARRIER: ucount = 256;
 #[cfg(target_pointer_width = "32")]
 const BARRIER: ucount = 8;
 
+#[repr(C)]
 struct ArcInner<T> {
     data: UnsafeCell<T>,
     counter: AtomicCounter,

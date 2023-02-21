@@ -1,0 +1,62 @@
+name: pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - feature/*
+  pull_request:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  cargo_test:
+    name: "Cargo Test"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build
+        run: cargo build --verbose
+      - name: Test with Cargo
+        run: cargo test --verbose
+  cargo_test_release:
+    name: "Cargo Test (Release)"
+    runs-on: ubuntu-latest
+    needs: [cargo_test]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build
+        run: cargo build --release --verbose
+      - name: Test with Cargo (Release)
+        run: cargo test --release --verbose
+  miri_test:
+    name: "Miri Test"
+    runs-on: ubuntu-latest
+    needs: [cargo_test_release]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Miri
+        run: |
+          rustup toolchain install nightly --component miri
+          rustup override set nightly
+          cargo miri setup
+      - name: Test with Miri
+        run: cargo miri test
+  miri_test_with_flags:
+    name: "Miri Test (RUSTFLAGS)"
+    env:
+      RUSTFLAGS: "-Z randomize-layout"
+    runs-on: ubuntu-latest
+    needs: [miri_test]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Miri
+        run: |
+          rustup toolchain install nightly --component miri
+          rustup override set nightly
+          cargo miri setup
+      - name: Test with Miri
+        run: cargo miri test

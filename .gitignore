@@ -2,3 +2,4 @@
 /dev
 rustfmt.toml
 Cargo.lock
+.idea/

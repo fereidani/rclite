@@ -24,3 +24,13 @@ Cargo.lock
 .idea/**/dynamic.xml
 .idea/**/uiDesigner.xml
 .idea/**/dbnavigator.xml
+
+# File-based project format
+*.iws
+
+# Editor-based Rest Client
+.idea/httpRequests
+
+# Cache file creation bug
+# See https://youtrack.jetbrains.com/issue/JBR-2257
+.idea/$CACHE_FILE$

@@ -21,3 +21,14 @@ jobs:
         run: cargo build --verbose
       - name: Cargo Test
         run: cargo test --verbose
+  miri:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Miri
+        run: |
+          rustup toolchain install nightly --component miri
+          rustup override set nightly
+          cargo miri setup
+      - name: Miri Test
+        run: cargo miri test

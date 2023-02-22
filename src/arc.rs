@@ -282,46 +282,198 @@ impl<T> Arc<T> {
         }
     }
 
-    /// If there's only one reference to T, remove it. Otherwise, make a copy of
-    /// T. If rc_t is of type [`Arc<T>`], this function works like
-    /// (*rc_t).clone(), but will avoid copying the value if possible.
+    #[inline(always)]
+    fn inner(&self) -> &ArcInner<T> {
+        // SAFETY: inner is protected by counter, it will not get released unless drop
+        // of the last owner get called.
+        unsafe { self.ptr.as_ref() }
+    }
+
+    /// Returns `true` if this is the only reference to the underlying data.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use std::ptr;
-    /// # use rclite::Arc;
+    /// use rclite::Arc;
+    ///
+    /// let mut data = Arc::new(String::from("Hello"));
+    ///
+    /// assert!(Arc::get_mut(&mut data).is_some()); // returns true because data is unique
+    ///
+    /// let mut data_clone = Arc::clone(&data);
+    ///
+    /// assert!(Arc::get_mut(&mut data).is_none()); // returns false because data is not unique
+    /// assert!(Arc::get_mut(&mut data_clone).is_none()); // returns false because data_clone is not unique
+    /// ```
+    #[inline(always)]
+    fn is_unique(&mut self) -> bool {
+        self.inner().counter.load(Ordering::Acquire) == 1
+    }
+
+    /// Returns a mutable reference to the inner value of the given `Arc` if
+    /// this is the only `Arc` pointing to it.
+    ///
+    /// Returns [`None`] otherwise because it is not safe to mutate a shared
+    /// value.
+    ///
+    /// See also [`make_mut`][make_mut], which clones the inner value when there
+    /// are other `Arc` pointers.
+    ///
+    /// [make_mut]: Arc::make_mut
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rclite::Arc;
+    ///
+    /// let mut x = Arc::new(3);
+    ///
+    /// // Get a mutable reference to the inner value.
+    /// *Arc::get_mut(&mut x).unwrap() = 4;
+    /// assert_eq!(*x, 4);
+    ///
+    /// // There are now two Arcs pointing to the same value, so `get_mut()` returns `None`.
+    /// let _y = Arc::clone(&x);
+    /// assert!(Arc::get_mut(&mut x).is_none());
+    /// ```
+    #[inline(always)]
+    pub fn get_mut(this: &mut Self) -> Option<&mut T> {
+        if this.is_unique() {
+            // It is safe to return a mutable reference to the inner value because
+            // this is the only Arc pointing to it.
+            unsafe { Some(Arc::get_mut_unchecked(this)) }
+        } else {
+            None
+        }
+    }
+
+    /// Returns a mutable reference into the given `Arc` without checking if it
+    /// is safe to do so.
+    ///
+    /// This method is faster than [`get_mut`] since it avoids any runtime
+    /// checks. However, it is unsafe to use unless you can guarantee that
+    /// no other `Arc` pointers to the same allocation exist and that they are
+    /// not dereferenced or have active borrows for the duration
+    /// of the returned borrow.
+    ///
+    /// # Safety
+    ///
+    /// You can use `get_mut_unchecked` if all of the following conditions are
+    /// met:
+    ///
+    /// * No other `Arc` pointers to the same allocation exist.
+    /// * The inner type of all `Arc` pointers is exactly the same (including
+    ///   lifetimes).
+    /// * No other `Arc` pointers are dereferenced or have active borrows for
+    ///   the duration of the returned mutable borrow.
+    ///
+    /// These conditions are trivially satisfied immediately after creating a
+    /// new `Arc` with `Arc::new`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rclite::Arc;
+    ///
+    /// let mut x = Arc::new(String::new());
+    /// unsafe {
+    ///     Arc::get_mut_unchecked(&mut x).push_str("foo")
+    /// }
+    /// assert_eq!(*x, "foo");
+    /// ```
+    ///
+    /// [`get_mut`]: Arc::get_mut
+    #[inline(always)]
+    pub unsafe fn get_mut_unchecked(this: &mut Self) -> &mut T {
+        unsafe { &mut *(&*this.ptr.as_ptr()).data.get() }
+    }
+}
+
+impl<T: Clone> Arc<T> {
+    /// If there is only one reference to T, removes it and returns it.
+    /// Otherwise, creates a copy of T and returns it. If `rc_t` is an
+    /// [`Arc<T>`], this function behaves like calling `(*rc_t).clone()`,
+    /// but avoids copying the value if possible.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rclite::Arc;
+    ///
     /// let inner = String::from("test");
     /// let ptr = inner.as_ptr();
     ///
     /// let rc = Arc::new(inner);
     /// let inner = Arc::unwrap_or_clone(rc);
     /// // The inner value was not cloned
-    /// assert!(ptr::eq(ptr, inner.as_ptr()));
+    /// assert_eq!(ptr, inner.as_ptr());
     ///
     /// let rc = Arc::new(inner);
     /// let rc2 = rc.clone();
     /// let inner = Arc::unwrap_or_clone(rc);
     /// // Because there were 2 references, we had to clone the inner value.
-    /// assert!(!ptr::eq(ptr, inner.as_ptr()));
+    /// assert_ne!(ptr, inner.as_ptr());
     /// // `rc2` is the last reference, so when we unwrap it we get back
     /// // the original `String`.
     /// let inner = Arc::unwrap_or_clone(rc2);
-    /// assert!(ptr::eq(ptr, inner.as_ptr()));
+    /// assert_eq!(ptr, inner.as_ptr());
     /// ```
     #[inline(always)]
-    pub fn unwrap_or_clone(this: Self) -> T
-    where
-        T: Clone,
-    {
+    pub fn unwrap_or_clone(this: Self) -> T {
         Arc::try_unwrap(this).unwrap_or_else(|rc| (*rc).clone())
     }
 
+    /// Returns a mutable reference to the inner value of the given `Arc`,
+    /// ensuring that it has unique ownership.
+    ///
+    /// If there are other `Arc` pointers to the same allocation, then
+    /// `make_mut` will clone the inner value to a new allocation to ensure
+    /// unique ownership. This is also referred to as "clone-on-write".
+    ///
+    /// Unlike `get_mut`, which only returns a mutable reference if there are no
+    /// other pointers to the same allocation, `make_mut` always returns a
+    /// mutable reference to the unique allocation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rclite::Arc;
+    ///
+    /// let mut data = Arc::new(5);
+    ///
+    /// *Arc::make_mut(&mut data) += 1;         // Won't clone anything
+    /// let mut other_data = Arc::clone(&data); // Won't clone inner data
+    /// *Arc::make_mut(&mut data) += 1;         // Clones inner data
+    /// *Arc::make_mut(&mut data) += 1;         // Won't clone anything
+    /// *Arc::make_mut(&mut other_data) *= 2;   // Won't clone anything
+    ///
+    /// // Now `data` and `other_data` point to different allocations.
+    /// assert_eq!(*data, 8);
+    /// assert_eq!(*other_data, 12);
+    /// ```
+    ///
+    /// # See also
+    ///
+    /// * [`get_mut`]: Returns a mutable reference to the inner value of the
+    ///   given `Arc`, but only if there are no other pointers to the same
+    ///   allocation.
+    /// * [`clone`]: Clones the `Arc` pointer, but not the inner value.
+    ///
+    /// [`get_mut`]: Arc::get_mut
+    /// [`clone`]: Clone::clone
     #[inline(always)]
-    fn inner(&self) -> &ArcInner<T> {
-        // SAFETY: inner is protected by counter, it will not get released unless drop
-        // of the last owner get called.
-        unsafe { self.ptr.as_ref() }
+    pub fn make_mut(this: &mut Arc<T>) -> &mut T {
+        if this
+            .inner()
+            .counter
+            .compare_exchange(1, 0, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            *this = Arc::new(T::clone(&this));
+        } else {
+            this.inner().counter.store(1, Ordering::Release);
+        }
+        unsafe { Self::get_mut_unchecked(this) }
     }
 }
 
@@ -448,6 +600,19 @@ impl<T: Ord> Ord for Arc<T> {
     #[inline(always)]
     fn cmp(&self, other: &Arc<T>) -> core::cmp::Ordering {
         (**self).cmp(&**other)
+    }
+}
+
+/// This trait allows for a value to be borrowed as a reference to a given type.
+/// It is typically used for generic code that can work with borrowed values of
+/// different types.
+///
+/// This implementation for `Rc<T>` allows for an `Rc<T>` to be borrowed as a
+/// shared reference to `T`.
+impl<T> core::borrow::Borrow<T> for Arc<T> {
+    #[inline(always)]
+    fn borrow(&self) -> &T {
+        &**self
     }
 }
 

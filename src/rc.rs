@@ -190,6 +190,27 @@ impl<T> Rc<T> {
         this.ptr.as_ptr() == other.ptr.as_ptr()
     }
 
+    /// Returns `true` if this is the only reference to the underlying data.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rclite::Rc;
+    ///
+    /// let mut data = Rc::new(String::from("Hello"));
+    ///
+    /// assert!(Rc::get_mut(&mut data).is_some()); // returns true because data is unique
+    ///
+    /// let mut data_clone = Rc::clone(&data);
+    ///
+    /// assert!(Rc::get_mut(&mut data).is_none()); // returns false because data is not unique
+    /// assert!(Rc::get_mut(&mut data_clone).is_none()); // returns false because data_clone is not unique
+    /// ```
+    #[inline(always)]
+    fn is_unique(&mut self) -> bool {
+        self.strong_count() == 1
+    }
+
     /// Returns a mutable reference to the inner value of an Rc, but only if
     /// there are no other references to it. Returns None otherwise.
     ///
@@ -207,13 +228,54 @@ impl<T> Rc<T> {
     /// ```
     #[inline(always)]
     pub fn get_mut(this: &mut Self) -> Option<&mut T> {
-        if Rc::strong_count(this) == 1 {
+        if this.is_unique() {
             // SAFETY: there is only one reference to Rc it's safe to make a mutable
             // reference
             Some(unsafe { &mut *this.inner().data.get() })
         } else {
             None
         }
+    }
+
+    /// Returns a mutable reference into the given `Rc` without checking if it
+    /// is safe to do so.
+    ///
+    /// This method is faster than [`get_mut`] since it avoids any runtime
+    /// checks. However, it is unsafe to use unless you can guarantee that
+    /// no other `Rc` pointers to the same allocation exist and that they are
+    /// not dereferenced or have active borrows for the duration
+    /// of the returned borrow.
+    ///
+    /// # Safety
+    ///
+    /// You can use `get_mut_unchecked` if all of the following conditions are
+    /// met:
+    ///
+    /// * No other `Rc` pointers to the same allocation exist.
+    /// * The inner type of all `Rc` pointers is exactly the same (including
+    ///   lifetimes).
+    /// * No other `Rc` pointers are dereferenced or have active borrows for the
+    ///   duration of the returned mutable borrow.
+    ///
+    /// These conditions are trivially satisfied immediately after creating a
+    /// new `Rc` with `Rc::new`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rclite::Rc;
+    ///
+    /// let mut x = Rc::new(String::new());
+    /// unsafe {
+    ///     Rc::get_mut_unchecked(&mut x).push_str("foo")
+    /// }
+    /// assert_eq!(*x, "foo");
+    /// ```
+    ///
+    /// [`get_mut`]: Rc::get_mut
+    #[inline(always)]
+    pub unsafe fn get_mut_unchecked(this: &mut Self) -> &mut T {
+        unsafe { &mut *(&*this.ptr.as_ptr()).data.get() }
     }
 
     /// If there's only one strong reference, returns the inner value. If not,
@@ -247,7 +309,9 @@ impl<T> Rc<T> {
             Err(this)
         }
     }
+}
 
+impl<T: Clone> Rc<T> {
     /// If there's only one reference to T, remove it. Otherwise, make a copy of
     /// T. If rc_t is of type [`Rc<T>`], this function works like
     /// (*rc_t).clone(), but will avoid copying the value if possible.
@@ -276,11 +340,54 @@ impl<T> Rc<T> {
     /// assert!(ptr::eq(ptr, inner.as_ptr()));
     /// ```
     #[inline(always)]
-    pub fn unwrap_or_clone(this: Self) -> T
-    where
-        T: Clone,
-    {
+    pub fn unwrap_or_clone(this: Self) -> T {
         Rc::try_unwrap(this).unwrap_or_else(|rc| (*rc).clone())
+    }
+
+    /// Returns a mutable reference to the inner value of the given `Rc`,
+    /// ensuring that it has unique ownership.
+    ///
+    /// If there are other `Rc` pointers to the same allocation, then
+    /// `make_mut` will clone the inner value to a new allocation to ensure
+    /// unique ownership. This is also referred to as "clone-on-write".
+    ///
+    /// Unlike `get_mut`, which only returns a mutable reference if there are no
+    /// other pointers to the same allocation, `make_mut` always returns a
+    /// mutable reference to the unique allocation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rclite::Rc;
+    ///
+    /// let mut data = Rc::new(5);
+    ///
+    /// *Rc::make_mut(&mut data) += 1;         // Won't clone anything
+    /// let mut other_data = Rc::clone(&data); // Won't clone inner data
+    /// *Rc::make_mut(&mut data) += 1;         // Clones inner data
+    /// *Rc::make_mut(&mut data) += 1;         // Won't clone anything
+    /// *Rc::make_mut(&mut other_data) *= 2;   // Won't clone anything
+    ///
+    /// // Now `data` and `other_data` point to different allocations.
+    /// assert_eq!(*data, 8);
+    /// assert_eq!(*other_data, 12);
+    /// ```
+    ///
+    /// # See also
+    ///
+    /// * [`get_mut`]: Returns a mutable reference to the inner value of the
+    ///   given `Rc`, but only if there are no other pointers to the same
+    ///   allocation.
+    /// * [`clone`]: Clones the `Rc` pointer, but not the inner value.
+    ///
+    /// [`get_mut`]: Rc::get_mut
+    /// [`clone`]: Clone::clone
+    #[inline(always)]
+    pub fn make_mut(this: &mut Rc<T>) -> &mut T {
+        if this.strong_count() != 1 {
+            *this = Rc::new(T::clone(&this));
+        }
+        unsafe { Self::get_mut_unchecked(this) }
     }
 }
 
@@ -415,6 +522,21 @@ impl<T: Ord> Ord for Rc<T> {
     #[inline(always)]
     fn cmp(&self, other: &Rc<T>) -> core::cmp::Ordering {
         (**self).cmp(&**other)
+    }
+}
+
+/// This trait allows for a value to be borrowed as a reference to a given type.
+/// It is typically used for generic code that can work with borrowed values of
+/// different types.
+///
+/// This implementation for `Rc<T>` allows for an `Rc<T>` to be borrowed as a
+/// shared reference to `T`.
+impl<T> core::borrow::Borrow<T> for Rc<T> {
+    #[inline(always)]
+    fn borrow(&self) -> &T {
+        // This dereferences the `Rc<T>` to get an `&T`, and then dereferences it
+        // again to get the `T`.
+        &**self
     }
 }
 

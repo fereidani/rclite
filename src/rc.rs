@@ -275,7 +275,7 @@ impl<T> Rc<T> {
     /// [`get_mut`]: Rc::get_mut
     #[inline(always)]
     pub unsafe fn get_mut_unchecked(this: &mut Self) -> &mut T {
-        unsafe { &mut *(&*this.ptr.as_ptr()).data.get() }
+        unsafe { &mut *(*this.ptr.as_ptr()).data.get() }
     }
 
     /// If there's only one strong reference, returns the inner value. If not,
@@ -385,7 +385,7 @@ impl<T: Clone> Rc<T> {
     #[inline(always)]
     pub fn make_mut(this: &mut Rc<T>) -> &mut T {
         if this.strong_count() != 1 {
-            *this = Rc::new(T::clone(&this));
+            *this = Rc::new(T::clone(this));
         }
         unsafe { Self::get_mut_unchecked(this) }
     }
@@ -534,9 +534,7 @@ impl<T: Ord> Ord for Rc<T> {
 impl<T> core::borrow::Borrow<T> for Rc<T> {
     #[inline(always)]
     fn borrow(&self) -> &T {
-        // This dereferences the `Rc<T>` to get an `&T`, and then dereferences it
-        // again to get the `T`.
-        &**self
+        self
     }
 }
 

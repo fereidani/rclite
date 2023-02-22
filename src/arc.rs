@@ -385,7 +385,7 @@ impl<T> Arc<T> {
     /// [`get_mut`]: Arc::get_mut
     #[inline(always)]
     pub unsafe fn get_mut_unchecked(this: &mut Self) -> &mut T {
-        unsafe { &mut *(&*this.ptr.as_ptr()).data.get() }
+        unsafe { &mut *(*this.ptr.as_ptr()).data.get() }
     }
 }
 
@@ -469,7 +469,7 @@ impl<T: Clone> Arc<T> {
             .compare_exchange(1, 0, Ordering::Acquire, Ordering::Relaxed)
             .is_err()
         {
-            *this = Arc::new(T::clone(&this));
+            *this = Arc::new(T::clone(this));
         } else {
             this.inner().counter.store(1, Ordering::Release);
         }
@@ -612,7 +612,7 @@ impl<T: Ord> Ord for Arc<T> {
 impl<T> core::borrow::Borrow<T> for Arc<T> {
     #[inline(always)]
     fn borrow(&self) -> &T {
-        &**self
+        self
     }
 }
 

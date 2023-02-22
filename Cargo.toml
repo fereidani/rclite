@@ -1,6 +1,6 @@
 [package]
 name = "rclite"
-version = "0.1.5"
+version = "0.2.0"
 edition = "2018"
 rust-version = "1.47"
 authors = ["Khashayar Fereidani"]
@@ -13,4 +13,5 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 [features]
-small = []
+default = ["usize-for-small-platforms"]
+usize-for-small-platforms = []

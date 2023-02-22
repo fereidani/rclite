@@ -69,12 +69,13 @@
 //!
 //! ### Features
 //!
-//! By default, RcLite employs a counter size of half the word size only for
-//! 64-bit systems, as overflowing a 32-bit counter is harder compared to
-//! overflowing 16-bit counters. For users who desire to use the half register
-//! size on other platforms, the `small` feature is available. Enabling this
-//! feature results in the use of 16-bit counters in 32-bit platforms and 8-bit
-//! counters in 16-bit platforms.
+//! By default, RcLite uses a counter size of half the word size for 64-bit
+//! systems, with the `usize-for-small-platforms` feature enabled. This is
+//! because overflowing a 32-bit counter is harder compared to overflowing
+//! 16-bit counters. If you wish to use the half register size on other
+//! platforms, you can disable the default features by setting
+//! `default-features = false`. This will result in the use of 16-bit counters
+//! on 32-bit platforms and 8-bit counters on 16-bit platforms.
 
 #![warn(missing_docs, missing_debug_implementations)]
 extern crate alloc;
@@ -88,11 +89,14 @@ pub(crate) use core::sync::atomic::AtomicU32 as AtomicCounter;
     not(target_pointer_width = "64"),
     not(target_pointer_width = "16"),
     not(target_pointer_width = "8"),
-    not(feature = "small"),
+    feature = "usize-for-small-platforms",
 ))]
 pub(crate) use core::sync::atomic::AtomicUsize as AtomicCounter;
 
-#[cfg(all(target_pointer_width = "32", feature = "small"))]
+#[cfg(all(
+    target_pointer_width = "32",
+    not(feature = "usize-for-small-platforms")
+))]
 pub(crate) use core::sync::atomic::AtomicU16 as AtomicCounter;
 
 // Rc counter definition
@@ -100,16 +104,25 @@ pub(crate) use core::sync::atomic::AtomicU16 as AtomicCounter;
 #[cfg(target_pointer_width = "64")]
 pub(crate) use u32 as ucount;
 
-#[cfg(all(not(target_pointer_width = "64"), not(feature = "small")))]
+#[cfg(all(
+    not(target_pointer_width = "64"),
+    feature = "usize-for-small-platforms"
+))]
 pub(crate) use usize as ucount;
 
-#[cfg(all(target_pointer_width = "32", feature = "small"))]
+#[cfg(all(
+    target_pointer_width = "32",
+    not(feature = "usize-for-small-platforms")
+))]
 pub(crate) use u16 as ucount;
 
-#[cfg(all(target_pointer_width = "16", feature = "small"))]
+#[cfg(all(
+    target_pointer_width = "16",
+    not(feature = "usize-for-small-platforms")
+))]
 pub(crate) use u8 as ucount;
 
-#[cfg(all(target_pointer_width = "8", feature = "small"))]
+#[cfg(all(target_pointer_width = "8", not(feature = "usize-for-small-platforms")))]
 pub(crate) use usize as ucount;
 
 #[cfg(all(not(target_pointer_width = "16"), not(target_pointer_width = "8")))]

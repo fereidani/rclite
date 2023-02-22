@@ -49,4 +49,4 @@ RcLite's structure is similar to a `Box<(T,counter)>`, where the counter is stor
 
 ### Features
 
-By default, RcLite employs a counter size of half the word size only for 64-bit systems, as overflowing a 32-bit counter is harder compared to overflowing 16-bit counters. For users who desire to use the half register size on other platforms, the `small` feature is available. Enabling this feature results in the use of 16-bit counters in 32-bit platforms and 8-bit counters in 16-bit platforms.
+By default, RcLite uses a counter size of half the word size for 64-bit systems, with the `usize-for-small-platforms` feature enabled. This is because overflowing a 32-bit counter is harder compared to overflowing 16-bit counters. If you wish to use the half register size on other platforms, you can disable the default features by setting `default-features = false`. This will result in the use of 16-bit counters on 32-bit platforms and 8-bit counters on 16-bit platforms.

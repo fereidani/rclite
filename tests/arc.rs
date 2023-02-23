@@ -8,10 +8,15 @@ fn simple() {
     drop(a);
 }
 
+#[cfg(miri)]
+const THREAD_COUNT: usize = 2;
+#[cfg(not(miri))]
+const THREAD_COUNT: usize = 8;
+
 #[test]
 fn multithread() {
     let a = Arc::new(!0usize);
-    for _ in 0..8 {
+    for _ in 0..THREAD_COUNT {
         let a = a.clone();
         thread::spawn(move || {
             if *a != !0 {
@@ -25,10 +30,10 @@ fn multithread() {
 #[test]
 fn multi_multithread() {
     let a = Arc::new(!0usize);
-    for _ in 0..8 {
+    for _ in 0..THREAD_COUNT {
         let a = a.clone();
         thread::spawn(move || {
-            for _ in 0..8 {
+            for _ in 0..THREAD_COUNT {
                 let a = a.clone();
                 thread::spawn(move || {
                     if *a != !0 {

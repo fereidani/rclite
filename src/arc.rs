@@ -463,15 +463,14 @@ impl<T: Clone> Arc<T> {
     /// [`clone`]: Clone::clone
     #[inline(always)]
     pub fn make_mut(this: &mut Arc<T>) -> &mut T {
-        if this
-            .inner()
-            .counter
+        let counter = &this.inner().counter;
+        if counter
             .compare_exchange(1, 0, Ordering::Acquire, Ordering::Relaxed)
             .is_err()
         {
             *this = Arc::new(T::clone(this));
         } else {
-            this.inner().counter.store(1, Ordering::Release);
+            counter.store(1, Ordering::Release);
         }
         unsafe { Self::get_mut_unchecked(this) }
     }
@@ -493,11 +492,12 @@ impl<T> From<T> for Arc<T> {
 }
 
 #[inline(never)]
-fn drop_arc_no_inline<T>(ptr: NonNull<ArcInner<T>>) {
+fn drop_arc_and_panic_no_inline<T>(ptr: NonNull<ArcInner<T>>) {
     drop(Arc {
         ptr,
         phantom: PhantomData,
-    })
+    });
+    panic!("reference counter overflow");
 }
 
 impl<T> Clone for Arc<T> {
@@ -505,10 +505,9 @@ impl<T> Clone for Arc<T> {
     fn clone(&self) -> Self {
         if self.inner().counter.fetch_add(1, Ordering::Relaxed) >= ucount::MAX - BARRIER {
             // turn back the counter to its initial state as this function will not return a
-            // valid [`Arc<T>`]. It uses `drop_arc_no_inline` to drop value to reduce
-            // overhead of clone inlining in user code.
-            drop_arc_no_inline(self.ptr);
-            panic!("reference counter overflow");
+            // valid [`Arc<T>`]. It uses `drop_arc_and_panic_no_inline` to drop value to
+            // reduce overhead of clone inlining in user code.
+            drop_arc_and_panic_no_inline(self.ptr);
         }
         Self {
             ptr: self.ptr,

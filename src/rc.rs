@@ -319,25 +319,25 @@ impl<T: Clone> Rc<T> {
     /// # Examples
     ///
     /// ```
-    /// # use std::ptr;
-    /// # use rclite::Rc;
+    /// use rclite::Rc;
+    ///
     /// let inner = String::from("test");
     /// let ptr = inner.as_ptr();
     ///
     /// let rc = Rc::new(inner);
     /// let inner = Rc::unwrap_or_clone(rc);
     /// // The inner value was not cloned
-    /// assert!(ptr::eq(ptr, inner.as_ptr()));
+    /// assert_eq!(ptr, inner.as_ptr());
     ///
     /// let rc = Rc::new(inner);
     /// let rc2 = rc.clone();
     /// let inner = Rc::unwrap_or_clone(rc);
     /// // Because there were 2 references, we had to clone the inner value.
-    /// assert!(!ptr::eq(ptr, inner.as_ptr()));
+    /// assert_ne!(ptr, inner.as_ptr());
     /// // `rc2` is the last reference, so when we unwrap it we get back
     /// // the original `String`.
     /// let inner = Rc::unwrap_or_clone(rc2);
-    /// assert!(ptr::eq(ptr, inner.as_ptr()));
+    /// assert_eq!(ptr, inner.as_ptr());
     /// ```
     #[inline(always)]
     pub fn unwrap_or_clone(this: Self) -> T {
@@ -422,6 +422,12 @@ impl<T> From<T> for Rc<T> {
     }
 }
 
+#[inline(never)]
+unsafe fn drop_arc_and_panic_no_inline(counter_ptr: *mut ucount) {
+    decrease_counter(counter_ptr);
+    panic!("reference counter overflow");
+}
+
 impl<T> Clone for Rc<T> {
     #[inline(always)]
     fn clone(&self) -> Self {
@@ -429,8 +435,15 @@ impl<T> Clone for Rc<T> {
         // SAFETY: counter is ensured to be used in single threaded environment only
         let value = unsafe { increase_counter(counter_ptr) };
         if value == 0 {
-            unsafe { decrease_counter(counter_ptr) };
-            panic!("reference counter overflow");
+            // SAFETY: `drop_arc_and_panic_no_inline` is only called when `value == 0`,
+            // which indicates a reference count overflow. Since this function can only be
+            // called in a single-threaded environment, we know that the counter pointer
+            // passed in is the only reference to the counter. Therefore, calling
+            // `decrease_counter` here is safe, as it is guaranteed to be the last use of
+            // the counter pointer. Additionally, this function is marked as
+            // `#[inline(never)]`, so it will not be inlined into the calling function,
+            // preventing any unwanted optimizations.
+            unsafe { drop_arc_and_panic_no_inline(counter_ptr) };
         }
         Self {
             ptr: self.ptr,

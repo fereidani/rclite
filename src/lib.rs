@@ -19,7 +19,7 @@
 //! an alternative to the standard library's reference-counting. It offers both
 //! multi-threaded and single-threaded reference counting options with improved
 //! performance and reduced memory overhead, boasting at least 50% and up to
-//! 100% decrease in memory usage compared to the standard library reference
+//! 100% decrease in memory overhead compared to the standard library reference
 //! counting. RcLite is a suitable option when weak references are not necessary
 //! and optimizing for performance and memory usage is a priority.
 //!

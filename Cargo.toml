@@ -1,6 +1,6 @@
 [package]
 name = "rclite"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2018"
 rust-version = "1.47"
 authors = ["Khashayar Fereidani"]
@@ -8,7 +8,7 @@ description = "small, fast, and memory-friendly reference counting compatible wi
 repository = "https://github.com/fereidani/rclite"
 documentation = "https://docs.rs/rclite"
 keywords = ["arc", "rc", "no_std"]
-categories = ["data-structures", "concurrency"]
+categories = ["data-structures", "concurrency", "no-std"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 

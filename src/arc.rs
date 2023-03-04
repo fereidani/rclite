@@ -1,10 +1,12 @@
 use crate::{ucount, AtomicCounter};
 use alloc::boxed::Box;
+use branches::unlikely;
 use core::{
     cell::UnsafeCell,
     fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
+    mem::MaybeUninit,
     ops::Deref,
     pin::Pin,
     ptr::NonNull,
@@ -113,7 +115,8 @@ impl<T> Arc<T> {
             counter: AtomicCounter::new(1),
         });
         Arc {
-            ptr: Box::leak(inner).into(),
+            // Safety: box is always not null
+            ptr: unsafe { NonNull::new_unchecked(Box::leak(inner)) },
             phantom: PhantomData,
         }
     }
@@ -267,7 +270,7 @@ impl<T> Arc<T> {
     /// ```
     #[inline(always)]
     pub fn try_unwrap(this: Self) -> Result<T, Self> {
-        if Arc::strong_count(&this) == 1 {
+        if this.is_unique() {
             // SAFETY: there is only one reference to Arc it's safe to move out value of T
             // from Arc and destroy the container
             unsafe {
@@ -306,7 +309,7 @@ impl<T> Arc<T> {
     /// assert!(Arc::get_mut(&mut data_clone).is_none()); // returns false because data_clone is not unique
     /// ```
     #[inline(always)]
-    fn is_unique(&mut self) -> bool {
+    fn is_unique(&self) -> bool {
         self.inner().counter.load(Ordering::Acquire) == 1
     }
 
@@ -423,6 +426,36 @@ impl<T: Clone> Arc<T> {
         Arc::try_unwrap(this).unwrap_or_else(|rc| (*rc).clone())
     }
 
+    /// Creates a new Arc<T> object that is a clone of the current Arc<T>
+    /// object.
+    ///
+    /// # Arguments
+    ///
+    /// * `self` - A reference to the current Arc<T> object to be cloned.
+    ///
+    /// # Returns
+    ///
+    /// A new Arc<T> object that shares the same data as the original Arc<T>
+    /// object in a new memory location.
+    ///
+    /// # Performance Considerations
+    ///
+    /// By pre-allocating memory and writing the cloned data to it, this
+    /// function can potentially improve performance by avoiding unnecessary
+    /// memory copy operations.
+    fn optimized_clone(&self) -> Arc<T> {
+        let mut buffer: Box<MaybeUninit<ArcInner<T>>> = Box::new(MaybeUninit::uninit());
+        let ptr = unsafe {
+            (*buffer.as_ptr()).data.get().write(T::clone(self));
+            (*buffer.as_mut_ptr()).counter = AtomicCounter::new(1);
+            NonNull::new_unchecked(Box::leak(buffer) as *mut _ as *mut ArcInner<T>)
+        };
+        Arc {
+            ptr,
+            phantom: PhantomData,
+        }
+    }
+
     /// Returns a mutable reference to the inner value of the given `Arc`,
     /// ensuring that it has unique ownership.
     ///
@@ -463,14 +496,8 @@ impl<T: Clone> Arc<T> {
     /// [`clone`]: Clone::clone
     #[inline(always)]
     pub fn make_mut(this: &mut Arc<T>) -> &mut T {
-        let counter = &this.inner().counter;
-        if counter
-            .compare_exchange(1, 0, Ordering::Acquire, Ordering::Relaxed)
-            .is_err()
-        {
-            *this = Arc::new(T::clone(this));
-        } else {
-            counter.store(1, Ordering::Release);
+        if !this.is_unique() {
+            *this = this.optimized_clone();
         }
         unsafe { Self::get_mut_unchecked(this) }
     }
@@ -503,7 +530,8 @@ fn drop_arc_and_panic_no_inline<T>(ptr: NonNull<ArcInner<T>>) {
 impl<T> Clone for Arc<T> {
     #[inline(always)]
     fn clone(&self) -> Self {
-        if self.inner().counter.fetch_add(1, Ordering::Relaxed) >= ucount::MAX - BARRIER {
+        let count = self.inner().counter.fetch_add(1, Ordering::Relaxed);
+        if unlikely(count >= ucount::MAX - BARRIER) {
             // turn back the counter to its initial state as this function will not return a
             // valid [`Arc<T>`]. It uses `drop_arc_and_panic_no_inline` to drop value to
             // reduce overhead of clone inlining in user code.

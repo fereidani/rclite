@@ -1,10 +1,12 @@
 use crate::ucount;
 use alloc::boxed::Box;
+use branches::{assume, unlikely};
 use core::{
-    cell::UnsafeCell,
+    cell::{Cell, UnsafeCell},
     fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
+    mem::MaybeUninit,
     ops::Deref,
     pin::Pin,
     ptr,
@@ -14,7 +16,7 @@ use core::{
 #[repr(C)]
 struct RcInner<T> {
     data: UnsafeCell<T>,
-    counter: UnsafeCell<ucount>,
+    counter: Cell<ucount>,
 }
 
 /// [`Rc<T>`] is a reference-counting pointer for single-threaded use, for
@@ -40,12 +42,14 @@ impl<T> Rc<T> {
     /// ```
     #[inline(always)]
     pub fn new(data: T) -> Rc<T> {
-        let inner = Box::new(RcInner {
-            data: UnsafeCell::new(data),
-            counter: UnsafeCell::new(1),
-        });
         Rc {
-            ptr: Box::leak(inner).into(),
+            // Safety: box is always not null
+            ptr: unsafe {
+                NonNull::new_unchecked(Box::leak(Box::new(RcInner {
+                    data: UnsafeCell::new(data),
+                    counter: Cell::new(1),
+                })))
+            },
             phantom: PhantomData,
         }
     }
@@ -161,9 +165,7 @@ impl<T> Rc<T> {
     #[inline(always)]
     #[must_use]
     pub fn strong_count(&self) -> usize {
-        // SAFETY: as self is a valid reference inner is valid reference in this
-        // lifetime
-        unsafe { *self.inner().counter.get() as usize }
+        self.inner().counter.get() as usize
     }
 
     /// Compares if two [`Rc<T>`]s reference the same allocation, similar to
@@ -207,8 +209,8 @@ impl<T> Rc<T> {
     /// assert!(Rc::get_mut(&mut data_clone).is_none()); // returns false because data_clone is not unique
     /// ```
     #[inline(always)]
-    fn is_unique(&mut self) -> bool {
-        self.strong_count() == 1
+    fn is_unique(&self) -> bool {
+        self.inner().counter.get() == 1
     }
 
     /// Returns a mutable reference to the inner value of an Rc, but only if
@@ -295,7 +297,7 @@ impl<T> Rc<T> {
     /// ```
     #[inline(always)]
     pub fn try_unwrap(this: Self) -> Result<T, Self> {
-        if Rc::strong_count(&this) == 1 {
+        if this.is_unique() {
             // SAFETY: there is only one reference to Rc it's safe to move out value of T
             // from Rc and destroy the container
             unsafe {
@@ -344,6 +346,35 @@ impl<T: Clone> Rc<T> {
         Rc::try_unwrap(this).unwrap_or_else(|rc| (*rc).clone())
     }
 
+    /// Creates a new Rc<T> object that is a clone of the current Rc<T> object.
+    ///
+    /// # Arguments
+    ///
+    /// * `self` - A reference to the current Rc<T> object to be cloned.
+    ///
+    /// # Returns
+    ///
+    /// A new Rc<T> object that shares the same data as the original Rc<T>
+    /// object in a new memory location.
+    ///
+    /// # Performance Considerations
+    ///
+    /// By pre-allocating memory and writing the cloned data to it, this
+    /// function can potentially improve performance by avoiding unnecessary
+    /// memory copy operations.
+    fn optimized_clone(&self) -> Rc<T> {
+        let mut buffer: Box<MaybeUninit<RcInner<T>>> = Box::new(MaybeUninit::uninit());
+        let ptr = unsafe {
+            (*buffer.as_ptr()).data.get().write(T::clone(self));
+            (*buffer.as_mut_ptr()).counter = Cell::new(1);
+            NonNull::new_unchecked(Box::leak(buffer) as *mut _ as *mut RcInner<T>)
+        };
+        Rc {
+            ptr,
+            phantom: PhantomData,
+        }
+    }
+
     /// Returns a mutable reference to the inner value of the given `Rc`,
     /// ensuring that it has unique ownership.
     ///
@@ -384,25 +415,11 @@ impl<T: Clone> Rc<T> {
     /// [`clone`]: Clone::clone
     #[inline(always)]
     pub fn make_mut(this: &mut Rc<T>) -> &mut T {
-        if this.strong_count() != 1 {
-            *this = Rc::new(T::clone(this));
+        if !this.is_unique() {
+            *this = this.optimized_clone();
         }
         unsafe { Self::get_mut_unchecked(this) }
     }
-}
-
-#[inline(always)]
-unsafe fn increase_counter(ptr: *mut ucount) -> ucount {
-    let ret = (*ptr).wrapping_add(1);
-    *ptr = ret;
-    ret
-}
-
-#[inline(always)]
-unsafe fn decrease_counter(ptr: *mut ucount) -> ucount {
-    let ret = (*ptr).wrapping_sub(1);
-    *ptr = ret;
-    ret
 }
 
 impl<T> Deref for Rc<T> {
@@ -422,29 +439,18 @@ impl<T> From<T> for Rc<T> {
     }
 }
 
-#[inline(never)]
-unsafe fn drop_arc_and_panic_no_inline(counter_ptr: *mut ucount) {
-    decrease_counter(counter_ptr);
-    panic!("reference counter overflow");
-}
-
 impl<T> Clone for Rc<T> {
     #[inline(always)]
     fn clone(&self) -> Self {
-        let counter_ptr = self.inner().counter.get();
+        let counter = &self.inner().counter;
+        let value = counter.get();
+        unsafe { assume(value != 0) };
+        let value = value.wrapping_add(1);
         // SAFETY: counter is ensured to be used in single threaded environment only
-        let value = unsafe { increase_counter(counter_ptr) };
-        if value == 0 {
-            // SAFETY: `drop_arc_and_panic_no_inline` is only called when `value == 0`,
-            // which indicates a reference count overflow. Since this function can only be
-            // called in a single-threaded environment, we know that the counter pointer
-            // passed in is the only reference to the counter. Therefore, calling
-            // `decrease_counter` here is safe, as it is guaranteed to be the last use of
-            // the counter pointer. Additionally, this function is marked as
-            // `#[inline(never)]`, so it will not be inlined into the calling function,
-            // preventing any unwanted optimizations.
-            unsafe { drop_arc_and_panic_no_inline(counter_ptr) };
+        if unlikely(value == 0) {
+            panic!("reference counter overflow");
         }
+        counter.set(value);
         Self {
             ptr: self.ptr,
             phantom: PhantomData,
@@ -455,10 +461,15 @@ impl<T> Clone for Rc<T> {
 impl<T> Drop for Rc<T> {
     #[inline(always)]
     fn drop(&mut self) {
-        let counter_ptr = self.inner().counter.get();
-        // SAFETY: counter is ensured to be used in single threaded environment only
-        let value = unsafe { decrease_counter(counter_ptr) };
-        if value == 0 {
+        let counter = &self.inner().counter;
+        let value = counter.get();
+        unsafe {
+            assume(value != 0);
+        }
+        if value != 1 {
+            let value = value.wrapping_sub(1);
+            counter.set(value);
+        } else {
             unsafe { Box::from_raw(self.ptr.as_mut()) };
         }
     }

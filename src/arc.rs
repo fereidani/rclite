@@ -10,7 +10,7 @@ use core::{
     ops::Deref,
     pin::Pin,
     ptr::NonNull,
-    sync::atomic::Ordering,
+    sync::atomic::{fence, Ordering},
 };
 
 // The barrier prevents the counter value from overflowing, ensuring that
@@ -392,7 +392,6 @@ impl<T> Arc<T> {
     }
 
     // Non-inlined part of `drop`. Just invokes the destructor.
-    #[inline(never)]
     unsafe fn drop_slow(&mut self) {
         let _ = Box::from_raw(self.ptr.as_ptr());
     }
@@ -556,7 +555,9 @@ impl<T> Drop for Arc<T> {
         if self.inner().counter.fetch_sub(1, Ordering::Release) != 1 {
             return;
         }
-        self.inner().counter.load(Ordering::Acquire);
+
+        fence(Ordering::Acquire);
+
         // SAFETY: this is the last owner of the ptr, it is safe to drop data
         unsafe { self.drop_slow() };
     }

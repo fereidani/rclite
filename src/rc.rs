@@ -313,7 +313,6 @@ impl<T> Rc<T> {
     }
 
     // Non-inlined part of `drop`. Just invokes the destructor.
-    #[inline(never)]
     unsafe fn drop_slow(&mut self) {
         let _ = Box::from_raw(self.ptr.as_mut());
     }

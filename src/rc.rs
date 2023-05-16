@@ -311,6 +311,11 @@ impl<T> Rc<T> {
             Err(this)
         }
     }
+
+    // Non-inlined part of `drop`. Just invokes the destructor.
+    unsafe fn drop_slow(&mut self) {
+        let _ = Box::from_raw(self.ptr.as_mut());
+    }
 }
 
 impl<T: Clone> Rc<T> {
@@ -470,7 +475,7 @@ impl<T> Drop for Rc<T> {
             let value = value.wrapping_sub(1);
             counter.set(value);
         } else {
-            unsafe { Box::from_raw(self.ptr.as_mut()) };
+            unsafe { self.drop_slow() };
         }
     }
 }

@@ -390,6 +390,11 @@ impl<T> Arc<T> {
     pub unsafe fn get_mut_unchecked(this: &mut Self) -> &mut T {
         unsafe { &mut *(*this.ptr.as_ptr()).data.get() }
     }
+
+    // Non-inlined part of `drop`. Just invokes the destructor.
+    unsafe fn drop_slow(&mut self) {
+        let _ = Box::from_raw(self.ptr.as_ptr());
+    }
 }
 
 impl<T: Clone> Arc<T> {
@@ -550,9 +555,11 @@ impl<T> Drop for Arc<T> {
         if self.inner().counter.fetch_sub(1, Ordering::Release) != 1 {
             return;
         }
+
         fence(Ordering::Acquire);
+
         // SAFETY: this is the last owner of the ptr, it is safe to drop data
-        unsafe { Box::from_raw(self.ptr.as_ptr()) };
+        unsafe { self.drop_slow() };
     }
 }
 

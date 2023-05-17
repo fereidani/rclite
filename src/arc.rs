@@ -21,9 +21,9 @@ use core::{
 // to 1, no matter how many concurrent overflows occur. so if after panic thread
 // unwinds, other threads can safely continue using their own Arc references.
 #[cfg(target_pointer_width = "64")]
-const BARRIER: ucount = 256;
+const BARRIER: ucount = 512;
 #[cfg(target_pointer_width = "32")]
-const BARRIER: ucount = 8;
+const BARRIER: ucount = 64;
 
 #[repr(C)]
 struct ArcInner<T> {
@@ -108,7 +108,7 @@ impl<T> Arc<T> {
     ///
     /// let tada = Arc::new("Tada!".to_string());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn new(data: T) -> Arc<T> {
         let inner = Box::new(ArcInner {
             data: UnsafeCell::new(data),
@@ -123,7 +123,7 @@ impl<T> Arc<T> {
 
     /// Constructs a new `Pin<Arc<T>>`. If `T` does not implement `Unpin`, then
     /// `data` will be pinned in memory and unable to be moved.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn pin(data: T) -> Pin<Arc<T>> {
         unsafe { Pin::new_unchecked(Arc::new(data)) }
@@ -144,7 +144,7 @@ impl<T> Arc<T> {
     /// assert_eq!(x_ptr, Arc::as_ptr(&y));
     /// assert_eq!(unsafe { &*x_ptr }, "hello");
     /// ```
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn as_ptr(&self) -> *const T {
         // SAFETY: ptr is valid, as self is a valid instance of [`Arc<T>`]
@@ -165,7 +165,7 @@ impl<T> Arc<T> {
     /// // reconstruct arc to drop the reference and avoid memory leaks
     /// unsafe { Arc::from_raw(x_ptr) };
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn into_raw(this: Self) -> *const T {
         let ptr = Self::as_ptr(&this);
         core::mem::forget(this);
@@ -199,7 +199,7 @@ impl<T> Arc<T> {
     ///
     /// // The memory was freed when `x` went out of scope above, so `x_ptr` is now dangling!
     /// ```
-    #[inline(always)]
+    #[inline]
     pub unsafe fn from_raw(ptr: *const T) -> Self {
         // SAFETY: ptr offset is same as ArcInner struct offset no recalculation of
         // offset is required
@@ -224,7 +224,7 @@ impl<T> Arc<T> {
     /// // the [`Arc<T>`] between threads.
     /// assert_eq!(2, Arc::strong_count(&five));
     /// ```
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn strong_count(&self) -> usize {
         self.inner().counter.load(Ordering::Acquire) as usize
@@ -247,7 +247,7 @@ impl<T> Arc<T> {
     /// ```
     ///
     /// [`ptr::eq`]: core::ptr::eq "ptr::eq"
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn ptr_eq(this: &Self, other: &Self) -> bool {
         this.ptr.as_ptr() == other.ptr.as_ptr()
@@ -268,7 +268,7 @@ impl<T> Arc<T> {
     /// let _y = Arc::clone(&x);
     /// assert_eq!(*Arc::try_unwrap(x).unwrap_err(), 4);
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn try_unwrap(this: Self) -> Result<T, Self> {
         if this.is_unique() {
             // SAFETY: there is only one reference to Arc it's safe to move out value of T
@@ -308,7 +308,7 @@ impl<T> Arc<T> {
     /// assert!(Arc::get_mut(&mut data).is_none()); // returns false because data is not unique
     /// assert!(Arc::get_mut(&mut data_clone).is_none()); // returns false because data_clone is not unique
     /// ```
-    #[inline(always)]
+    #[inline]
     fn is_unique(&self) -> bool {
         self.inner().counter.load(Ordering::Acquire) == 1
     }
@@ -339,7 +339,7 @@ impl<T> Arc<T> {
     /// let _y = Arc::clone(&x);
     /// assert!(Arc::get_mut(&mut x).is_none());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn get_mut(this: &mut Self) -> Option<&mut T> {
         if this.is_unique() {
             // It is safe to return a mutable reference to the inner value because
@@ -386,12 +386,16 @@ impl<T> Arc<T> {
     /// ```
     ///
     /// [`get_mut`]: Arc::get_mut
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_mut_unchecked(this: &mut Self) -> &mut T {
         unsafe { &mut *(*this.ptr.as_ptr()).data.get() }
     }
 
-    // Non-inlined part of `drop`. Just invokes the destructor.
+    // The non-inlined portion of `drop` that simply invokes the destructor.
+    // We rely on the compiler to determine whether it is beneficial to inline the
+    // destructor or not. Unlike the standard library, we don't explicitly mark
+    // this section as inline(never) and leave it to the compiler's discretion to
+    // decide if inlining the function is cheap and necessary.
     unsafe fn drop_slow(&mut self) {
         let _ = Box::from_raw(self.ptr.as_ptr());
     }
@@ -426,7 +430,7 @@ impl<T: Clone> Arc<T> {
     /// let inner = Arc::unwrap_or_clone(rc2);
     /// assert_eq!(ptr, inner.as_ptr());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn unwrap_or_clone(this: Self) -> T {
         Arc::try_unwrap(this).unwrap_or_else(|rc| (*rc).clone())
     }
@@ -448,6 +452,7 @@ impl<T: Clone> Arc<T> {
     /// By pre-allocating memory and writing the cloned data to it, this
     /// function can potentially improve performance by avoiding unnecessary
     /// memory copy operations.
+    #[inline]
     fn optimized_clone(&self) -> Arc<T> {
         let mut buffer: Box<MaybeUninit<ArcInner<T>>> = Box::new(MaybeUninit::uninit());
         let ptr = unsafe {
@@ -499,7 +504,7 @@ impl<T: Clone> Arc<T> {
     ///
     /// [`get_mut`]: Arc::get_mut
     /// [`clone`]: Clone::clone
-    #[inline(always)]
+    #[inline]
     pub fn make_mut(this: &mut Arc<T>) -> &mut T {
         if !this.is_unique() {
             *this = this.optimized_clone();
@@ -533,7 +538,7 @@ fn drop_arc_and_panic_no_inline<T>(ptr: NonNull<ArcInner<T>>) {
 }
 
 impl<T> Clone for Arc<T> {
-    #[inline(always)]
+    #[inline]
     fn clone(&self) -> Self {
         let count = self.inner().counter.fetch_add(1, Ordering::Relaxed);
         if unlikely(count >= ucount::MAX - BARRIER) {
@@ -550,20 +555,19 @@ impl<T> Clone for Arc<T> {
 }
 
 impl<T> Drop for Arc<T> {
-    #[inline(always)]
+    #[inline]
     fn drop(&mut self) {
         if self.inner().counter.fetch_sub(1, Ordering::Release) != 1 {
             return;
         }
-
         fence(Ordering::Acquire);
-
         // SAFETY: this is the last owner of the ptr, it is safe to drop data
         unsafe { self.drop_slow() };
     }
 }
 
 impl<T: Hash> Hash for Arc<T> {
+    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         (**self).hash(state);
     }
@@ -588,14 +592,14 @@ impl<T> fmt::Pointer for Arc<T> {
 }
 
 impl<T: Default> Default for Arc<T> {
-    #[inline(always)]
+    #[inline]
     fn default() -> Arc<T> {
         Arc::new(Default::default())
     }
 }
 
 impl<T: PartialEq> PartialEq for Arc<T> {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &Arc<T>) -> bool {
         self.deref().eq(other)
     }
@@ -604,34 +608,34 @@ impl<T: PartialEq> PartialEq for Arc<T> {
 impl<T: Eq> Eq for Arc<T> {}
 
 impl<T: PartialOrd> PartialOrd for Arc<T> {
-    #[inline(always)]
+    #[inline]
     fn partial_cmp(&self, other: &Arc<T>) -> Option<core::cmp::Ordering> {
         (**self).partial_cmp(&**other)
     }
 
-    #[inline(always)]
+    #[inline]
     fn lt(&self, other: &Arc<T>) -> bool {
         **self < **other
     }
 
-    #[inline(always)]
+    #[inline]
     fn le(&self, other: &Arc<T>) -> bool {
         **self <= **other
     }
 
-    #[inline(always)]
+    #[inline]
     fn gt(&self, other: &Arc<T>) -> bool {
         **self > **other
     }
 
-    #[inline(always)]
+    #[inline]
     fn ge(&self, other: &Arc<T>) -> bool {
         **self >= **other
     }
 }
 
 impl<T: Ord> Ord for Arc<T> {
-    #[inline(always)]
+    #[inline]
     fn cmp(&self, other: &Arc<T>) -> core::cmp::Ordering {
         (**self).cmp(&**other)
     }
@@ -646,6 +650,37 @@ impl<T: Ord> Ord for Arc<T> {
 impl<T> core::borrow::Borrow<T> for Arc<T> {
     #[inline(always)]
     fn borrow(&self) -> &T {
+        self
+    }
+}
+
+/// An implementation of the `AsRef` trait for `Arc<T>`.
+///
+/// This allows an `Arc<T>` to be treated as a reference to `T`.
+///
+/// # Examples
+///
+/// ```
+/// use rclite::Arc;
+///
+/// let data = Arc::new(42);
+/// let reference: &i32 = data.as_ref();
+/// assert_eq!(*reference, 42);
+/// ```
+impl<T> AsRef<T> for Arc<T> {
+    /// Returns a reference to the inner value of the `Arc<T>`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rclite::Arc;
+    ///
+    /// let data = Arc::new("Hello, world!".to_string());
+    /// let reference: &String = data.as_ref();
+    /// assert_eq!(reference, "Hello, world!");
+    /// ```
+    #[inline(always)]
+    fn as_ref(&self) -> &T {
         self
     }
 }

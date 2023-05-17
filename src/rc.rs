@@ -2,20 +2,19 @@ use crate::ucount;
 use alloc::boxed::Box;
 use branches::{assume, unlikely};
 use core::{
-    cell::{Cell, UnsafeCell},
+    cell::Cell,
     fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
     mem::MaybeUninit,
     ops::Deref,
     pin::Pin,
-    ptr,
     ptr::NonNull,
 };
 
 #[repr(C)]
 struct RcInner<T> {
-    data: UnsafeCell<T>,
+    data: T,
     counter: Cell<ucount>,
 }
 
@@ -40,13 +39,13 @@ impl<T> Rc<T> {
     ///
     /// let tada = Rc::new("Tada!");
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn new(data: T) -> Rc<T> {
         Rc {
             // Safety: box is always not null
             ptr: unsafe {
                 NonNull::new_unchecked(Box::leak(Box::new(RcInner {
-                    data: UnsafeCell::new(data),
+                    data,
                     counter: Cell::new(1),
                 })))
             },
@@ -61,8 +60,16 @@ impl<T> Rc<T> {
         unsafe { self.ptr.as_ref() }
     }
 
+    #[inline]
+    fn inner_mut(&mut self) -> &mut RcInner<T> {
+        // SAFETY: inner is protected by counter, it will not get released unless drop
+        // of the last owner get called.
+        unsafe { self.ptr.as_mut() }
+    }
+
     /// Constructs a new `Pin<Rc<T>>`. If `T` does not implement `Unpin`, then
     /// `value` will be pinned in memory and unable to be moved.
+    #[inline]
     #[must_use]
     pub fn pin(value: T) -> Pin<Rc<T>> {
         unsafe { Pin::new_unchecked(Rc::new(value)) }
@@ -83,7 +90,7 @@ impl<T> Rc<T> {
     /// assert_eq!(x_ptr, Rc::as_ptr(&y));
     /// assert_eq!(unsafe { &*x_ptr }, "hello");
     /// ```
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn as_ptr(&self) -> *const T {
         // SAFETY: ptr is valid, as self is a valid instance of [`Rc<T>`]
@@ -104,7 +111,7 @@ impl<T> Rc<T> {
     /// // reconstruct Rc to drop the reference and avoid memory leaks
     /// unsafe { Rc::from_raw(x_ptr) };
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn into_raw(this: Self) -> *const T {
         let ptr = Self::as_ptr(&this);
         core::mem::forget(this);
@@ -138,7 +145,7 @@ impl<T> Rc<T> {
     ///
     /// // The memory was freed when `x` went out of scope above, so `x_ptr` is now dangling!
     /// ```
-    #[inline(always)]
+    #[inline]
     pub unsafe fn from_raw(ptr: *const T) -> Self {
         // SAFETY: ptr offset is same as RcInner struct offset no recalculation of
         // offset is required
@@ -162,7 +169,7 @@ impl<T> Rc<T> {
     /// // the [`Rc<T>`] between threads.
     /// assert_eq!(2, Rc::strong_count(&five));
     /// ```
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn strong_count(&self) -> usize {
         self.inner().counter.get() as usize
@@ -186,7 +193,7 @@ impl<T> Rc<T> {
     /// ```
     ///
     /// [`ptr::eq`]: core::ptr::eq "ptr::eq"
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn ptr_eq(this: &Self, other: &Self) -> bool {
         this.ptr.as_ptr() == other.ptr.as_ptr()
@@ -208,7 +215,7 @@ impl<T> Rc<T> {
     /// assert!(Rc::get_mut(&mut data).is_none()); // returns false because data is not unique
     /// assert!(Rc::get_mut(&mut data_clone).is_none()); // returns false because data_clone is not unique
     /// ```
-    #[inline(always)]
+    #[inline]
     fn is_unique(&self) -> bool {
         self.inner().counter.get() == 1
     }
@@ -228,12 +235,12 @@ impl<T> Rc<T> {
     /// let _y = Rc::clone(&x);
     /// assert!(Rc::get_mut(&mut x).is_none());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn get_mut(this: &mut Self) -> Option<&mut T> {
         if this.is_unique() {
             // SAFETY: there is only one reference to Rc it's safe to make a mutable
             // reference
-            Some(unsafe { &mut *this.inner().data.get() })
+            Some(&mut this.inner_mut().data)
         } else {
             None
         }
@@ -275,9 +282,9 @@ impl<T> Rc<T> {
     /// ```
     ///
     /// [`get_mut`]: Rc::get_mut
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_mut_unchecked(this: &mut Self) -> &mut T {
-        unsafe { &mut *(*this.ptr.as_ptr()).data.get() }
+        &mut this.inner_mut().data
     }
 
     /// If there's only one strong reference, returns the inner value. If not,
@@ -295,7 +302,7 @@ impl<T> Rc<T> {
     /// let _y = Rc::clone(&x);
     /// assert_eq!(*Rc::try_unwrap(x).unwrap_err(), 4);
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn try_unwrap(this: Self) -> Result<T, Self> {
         if this.is_unique() {
             // SAFETY: there is only one reference to Rc it's safe to move out value of T
@@ -303,8 +310,7 @@ impl<T> Rc<T> {
             unsafe {
                 let inner = Box::from_raw(this.ptr.as_ptr());
                 core::mem::forget(this);
-                let val = ptr::read(inner.data.get());
-                core::mem::forget(inner.data);
+                let val = inner.data;
                 Ok(val)
             }
         } else {
@@ -312,9 +318,13 @@ impl<T> Rc<T> {
         }
     }
 
-    // Non-inlined part of `drop`. Just invokes the destructor.
+    // The non-inlined portion of `drop` that simply invokes the destructor.
+    // We rely on the compiler to determine whether it is beneficial to inline the
+    // destructor or not. Unlike the standard library, we don't explicitly mark
+    // this section as inline(never) and leave it to the compiler's discretion to
+    // decide if inlining the function is cheap and necessary.
     unsafe fn drop_slow(&mut self) {
-        let _ = Box::from_raw(self.ptr.as_mut());
+        let _ = Box::from_raw(self.ptr.as_ptr());
     }
 }
 
@@ -346,7 +356,7 @@ impl<T: Clone> Rc<T> {
     /// let inner = Rc::unwrap_or_clone(rc2);
     /// assert_eq!(ptr, inner.as_ptr());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn unwrap_or_clone(this: Self) -> T {
         Rc::try_unwrap(this).unwrap_or_else(|rc| (*rc).clone())
     }
@@ -370,7 +380,7 @@ impl<T: Clone> Rc<T> {
     fn optimized_clone(&self) -> Rc<T> {
         let mut buffer: Box<MaybeUninit<RcInner<T>>> = Box::new(MaybeUninit::uninit());
         let ptr = unsafe {
-            (*buffer.as_ptr()).data.get().write(T::clone(self));
+            (&mut (*buffer.as_mut_ptr()).data as *mut T).write(T::clone(self));
             (*buffer.as_mut_ptr()).counter = Cell::new(1);
             NonNull::new_unchecked(Box::leak(buffer) as *mut _ as *mut RcInner<T>)
         };
@@ -418,7 +428,7 @@ impl<T: Clone> Rc<T> {
     ///
     /// [`get_mut`]: Rc::get_mut
     /// [`clone`]: Clone::clone
-    #[inline(always)]
+    #[inline]
     pub fn make_mut(this: &mut Rc<T>) -> &mut T {
         if !this.is_unique() {
             *this = this.optimized_clone();
@@ -430,10 +440,8 @@ impl<T: Clone> Rc<T> {
 impl<T> Deref for Rc<T> {
     type Target = T;
     #[inline(always)]
-    fn deref(&self) -> &Self::Target {
-        // SAFETY: data will not be shared as mutable unless there is a single owner for
-        // the data
-        unsafe { &*(self.inner().data.get() as *const T) }
+    fn deref(&self) -> &T {
+        &(self.inner().data)
     }
 }
 
@@ -445,7 +453,7 @@ impl<T> From<T> for Rc<T> {
 }
 
 impl<T> Clone for Rc<T> {
-    #[inline(always)]
+    #[inline]
     fn clone(&self) -> Self {
         let counter = &self.inner().counter;
         let value = counter.get();
@@ -464,7 +472,7 @@ impl<T> Clone for Rc<T> {
 }
 
 impl<T> Drop for Rc<T> {
-    #[inline(always)]
+    #[inline]
     fn drop(&mut self) {
         let counter = &self.inner().counter;
         let value = counter.get();
@@ -481,6 +489,7 @@ impl<T> Drop for Rc<T> {
 }
 
 impl<T: Hash> Hash for Rc<T> {
+    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         (**self).hash(state);
     }
@@ -505,14 +514,14 @@ impl<T> fmt::Pointer for Rc<T> {
 }
 
 impl<T: Default> Default for Rc<T> {
-    #[inline(always)]
+    #[inline]
     fn default() -> Rc<T> {
         Rc::new(Default::default())
     }
 }
 
 impl<T: PartialEq> PartialEq for Rc<T> {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &Rc<T>) -> bool {
         self.deref().eq(other)
     }
@@ -521,34 +530,34 @@ impl<T: PartialEq> PartialEq for Rc<T> {
 impl<T: Eq> Eq for Rc<T> {}
 
 impl<T: PartialOrd> PartialOrd for Rc<T> {
-    #[inline(always)]
+    #[inline]
     fn partial_cmp(&self, other: &Rc<T>) -> Option<core::cmp::Ordering> {
         (**self).partial_cmp(&**other)
     }
 
-    #[inline(always)]
+    #[inline]
     fn lt(&self, other: &Rc<T>) -> bool {
         **self < **other
     }
 
-    #[inline(always)]
+    #[inline]
     fn le(&self, other: &Rc<T>) -> bool {
         **self <= **other
     }
 
-    #[inline(always)]
+    #[inline]
     fn gt(&self, other: &Rc<T>) -> bool {
         **self > **other
     }
 
-    #[inline(always)]
+    #[inline]
     fn ge(&self, other: &Rc<T>) -> bool {
         **self >= **other
     }
 }
 
 impl<T: Ord> Ord for Rc<T> {
-    #[inline(always)]
+    #[inline]
     fn cmp(&self, other: &Rc<T>) -> core::cmp::Ordering {
         (**self).cmp(&**other)
     }
@@ -563,6 +572,37 @@ impl<T: Ord> Ord for Rc<T> {
 impl<T> core::borrow::Borrow<T> for Rc<T> {
     #[inline(always)]
     fn borrow(&self) -> &T {
+        self
+    }
+}
+
+/// An implementation of the `AsRef` trait for `Rc<T>`.
+///
+/// This allows an `Rc<T>` to be treated as a reference to `T`.
+///
+/// # Examples
+///
+/// ```
+/// use rclite::Rc;
+///
+/// let data = Rc::new(42);
+/// let reference: &i32 = data.as_ref();
+/// assert_eq!(*reference, 42);
+/// ```
+impl<T> AsRef<T> for Rc<T> {
+    /// Returns a reference to the inner value of the `Rc<T>`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rclite::Rc;
+    ///
+    /// let data = Rc::new("Hello, world!".to_string());
+    /// let reference: &String = data.as_ref();
+    /// assert_eq!(reference, "Hello, world!");
+    /// ```
+    #[inline(always)]
+    fn as_ref(&self) -> &T {
         self
     }
 }

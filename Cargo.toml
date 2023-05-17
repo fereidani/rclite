@@ -1,6 +1,6 @@
 [package]
 name = "rclite"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2018"
 rust-version = "1.47"
 authors = ["Khashayar Fereidani"]
@@ -17,4 +17,28 @@ default = ["usize-for-small-platforms"]
 usize-for-small-platforms = []
 
 [dependencies]
-branches = "0.1.0"
+branches = "0.1"
+
+[dev-dependencies]
+criterion = "0.4"
+rayon = "1"
+
+[[bench]]
+name = "rc"
+harness = false
+
+[[bench]]
+name = "rc_btree"
+harness = false
+
+[[bench]]
+name = "rc_make_mut"
+harness = false
+
+[[bench]]
+name = "arc"
+harness = false
+
+[[bench]]
+name = "arc_btree"
+harness = false

@@ -1,6 +1,6 @@
 [package]
 name = "rclite"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2018"
 rust-version = "1.47"
 authors = ["Khashayar Fereidani"]

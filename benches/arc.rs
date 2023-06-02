@@ -13,14 +13,14 @@ fn create_arc_benchmark(c: &mut Criterion) {
     c.bench_function("rclite::Arc::new", |b| {
         b.iter(|| {
             let data = black_box([42; 1024]);
-            
+
             RcliteArc::new(data)
         })
     });
     c.bench_function("std::sync::Arc::new", |b| {
         b.iter(|| {
             let data = black_box([42; 1024]);
-            
+
             Arc::new(data)
         })
     });
@@ -30,17 +30,9 @@ fn clone_arc_benchmark(c: &mut Criterion) {
     let std_arc = Arc::new([42; 1024]);
     let rclite_arc = RcliteArc::new([42; 1024]);
     c.bench_function("rclite::Arc::clone", |b| {
-        b.iter(|| {
-            
-            RcliteArc::clone(&rclite_arc)
-        })
+        b.iter(|| RcliteArc::clone(&rclite_arc))
     });
-    c.bench_function("std::sync::Arc::clone", |b| {
-        b.iter(|| {
-            
-            Arc::clone(&std_arc)
-        })
-    });
+    c.bench_function("std::sync::Arc::clone", |b| b.iter(|| Arc::clone(&std_arc)));
 }
 
 fn drop_arc_benchmark(c: &mut Criterion) {

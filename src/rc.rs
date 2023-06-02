@@ -326,6 +326,38 @@ impl<T> Rc<T> {
     unsafe fn drop_slow(&mut self) {
         let _ = Box::from_raw(self.ptr.as_ptr());
     }
+
+    /// Extracts and returns the inner value from an `Rc` if it has exactly one
+    /// strong reference.
+    ///
+    /// If the `Rc` has more than one strong reference or outstanding weak
+    /// references, it returns `None` and drops the `Rc`.
+    ///
+    /// By calling `Rc::into_inner` on every clone of this `Rc`, it is
+    /// guaranteed that exactly one of the calls will return the inner
+    /// value. This ensures that the inner value is not dropped.
+    ///
+    /// Example:
+    /// ```
+    /// use rclite::Rc;
+    ///
+    /// let value = Rc::new(42);
+    /// let cloned1 = Rc::clone(&value);
+    /// let cloned2 = Rc::clone(&value);
+    /// // it's not sole owner so it will be dropped and will return none
+    /// assert!(Rc::into_inner(cloned1).is_none());
+    /// // it's not sole owner so it will be dropped and will return none
+    /// assert!(Rc::into_inner(value).is_none());
+    /// // it is sole reference to the data so it will return the data inside
+    /// assert_eq!(Rc::into_inner(cloned2).unwrap(), 42);
+    /// ```
+    ///
+    /// This function is equivalent to `Rc::try_unwrap(this).ok()`. (Note that
+    /// these are not equivalent for [`Arc`](crate::sync::Arc), due to race
+    /// conditions that do not apply to `Rc`.
+    pub fn into_inner(this: Self) -> Option<T> {
+        Rc::try_unwrap(this).ok()
+    }
 }
 
 impl<T: Clone> Rc<T> {

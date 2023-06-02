@@ -61,7 +61,7 @@ struct ArcInner<T> {
 /// the type T you're using with it implements these traits. Keep in mind that
 /// [`Arc<T>`] only ensures thread safety for the reference count, not the data
 /// stored in it. To make the data itself thread-safe, you may need to pair
-/// [`Arc<T>`] with a `Send`+`Sync` type, such as `std::sync::Mutex<T>`.
+/// [`Arc<T>`] with a `Send`+`Sync` type, such as `rclite::Mutex<T>`.
 ///
 /// # Cloning references
 ///
@@ -398,6 +398,49 @@ impl<T> Arc<T> {
     // decide if inlining the function is cheap and necessary.
     unsafe fn drop_slow(&mut self) {
         let _ = Box::from_raw(self.ptr.as_ptr());
+    }
+
+    /// Returns the inner value of the `Arc` if it's the only strong reference.
+    ///
+    /// If the `Arc` has multiple strong references, `None` is returned.
+    /// If `Arc::into_inner` is called on every clone of this `Arc`, exactly one
+    /// of the calls will return the inner value, ensuring it's not dropped.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rclite::Arc;
+    ///
+    /// let x = Arc::new(3);
+    /// let y = Arc::clone(&x);
+    ///
+    /// let x_thread = std::thread::spawn(|| Arc::into_inner(x));
+    /// let y_thread = std::thread::spawn(|| Arc::into_inner(y));
+    ///
+    /// let x_inner_value = x_thread.join().unwrap();
+    /// let y_inner_value = y_thread.join().unwrap();
+    ///
+    /// assert!(matches!(
+    ///     (x_inner_value, y_inner_value),
+    ///     (None, Some(3)) | (Some(3), None)
+    /// ));
+    /// ```
+    pub fn into_inner(this: Self) -> Option<T> {
+        let mut this = core::mem::ManuallyDrop::new(this);
+
+        if this.inner().counter.fetch_sub(1, Ordering::Release) != 1 {
+            // if it's not sole owner of the Arc, return None, it's safe to not drop this
+            // as we manually semantically removed it from the counter
+            return None;
+        }
+
+        this.inner().counter.load(Ordering::Acquire);
+
+        // SAFETY: this is sole owner of the data, it is safe to move it outside of
+        // internal reference
+        let inner = unsafe { core::ptr::read(Self::get_mut_unchecked(&mut this)) };
+
+        Some(inner)
     }
 }
 

@@ -1,7 +1,8 @@
 use crate::{ucount, AtomicCounter};
-use alloc::boxed::Box;
+use alloc::{alloc::dealloc, boxed::Box};
 use branches::unlikely;
 use core::{
+    alloc::Layout,
     cell::UnsafeCell,
     fmt,
     hash::{Hash, Hasher},
@@ -426,21 +427,26 @@ impl<T> Arc<T> {
     /// ));
     /// ```
     pub fn into_inner(this: Self) -> Option<T> {
-        let mut this = core::mem::ManuallyDrop::new(this);
+        let this = core::mem::ManuallyDrop::new(this);
 
-        if this.inner().counter.fetch_sub(1, Ordering::Release) != 1 {
-            // if it's not sole owner of the Arc, return None, it's safe to not drop this
-            // as we manually semantically removed it from the counter
+        let inner = this.inner();
+
+        if inner.counter.fetch_sub(1, Ordering::Release) != 1 {
+            // if it's not sole owner of the Arc, return None, it's safe to not manually
+            // drop `this` as we manually semantically removed it from the counter
             return None;
         }
 
-        this.inner().counter.load(Ordering::Acquire);
+        inner.counter.load(Ordering::Acquire);
 
-        // SAFETY: this is sole owner of the data, it is safe to move it outside of
-        // internal reference
-        let inner = unsafe { core::ptr::read(Self::get_mut_unchecked(&mut this)) };
-
-        Some(inner)
+        Some(unsafe {
+            // Move data out of ArcInner
+            let value = core::ptr::read(inner.data.get());
+            // Deallocate the pointer of ArcInner but avoid running Drop of data, as data is
+            // semantically moved.
+            dealloc(this.ptr.as_ptr() as *mut u8, Layout::new::<ArcInner<T>>());
+            value
+        })
     }
 }
 

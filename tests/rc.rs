@@ -13,3 +13,12 @@ fn cloned() {
     let _c = a.clone();
     let _d = a;
 }
+
+#[cfg(feature = "enum-ptr")]
+#[test]
+fn aligned() {
+    // alignment: bool < ucount
+    assert_eq!(<Rc<bool> as enum_ptr::Aligned>::ALIGNMENT, 4);
+    // alignment: u128 > ucount
+    assert_eq!(<Rc<u128> as enum_ptr::Aligned>::ALIGNMENT, 16);
+}

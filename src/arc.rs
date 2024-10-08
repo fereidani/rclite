@@ -735,3 +735,8 @@ impl<T> AsRef<T> for Arc<T> {
 }
 
 impl<T> Unpin for Arc<T> {}
+
+#[cfg(feature = "enum-ptr")]
+unsafe impl<T> enum_ptr::Aligned for Arc<T> {
+    const ALIGNMENT: usize = align_of::<ArcInner<T>>();
+}

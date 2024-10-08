@@ -45,3 +45,12 @@ fn multi_multithread() {
     }
     std::thread::sleep(Duration::from_millis(100));
 }
+
+#[cfg(feature = "enum-ptr")]
+#[test]
+fn aligned() {
+    // alignment: bool < ucount
+    assert_eq!(<Arc<bool> as enum_ptr::Aligned>::ALIGNMENT, 4);
+    // alignment: u128 > ucount
+    assert_eq!(<Arc<u128> as enum_ptr::Aligned>::ALIGNMENT, 16);
+}

@@ -18,6 +18,7 @@ usize-for-small-platforms = []
 
 [dependencies]
 branches = "0.1"
+enum-ptr = { version = "0.2.0", optional = true }
 
 [dev-dependencies]
 criterion = "0.4"

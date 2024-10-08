@@ -640,3 +640,8 @@ impl<T> AsRef<T> for Rc<T> {
 }
 
 impl<T> Unpin for Rc<T> {}
+
+#[cfg(feature = "enum-ptr")]
+unsafe impl<T> enum_ptr::Aligned for Rc<T> {
+    const ALIGNMENT: usize = align_of::<RcInner<T>>();
+}

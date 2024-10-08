@@ -19,9 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Build
-        run: cargo build --verbose
+        run: cargo build --all-features --verbose
       - name: Test with Cargo
-        run: cargo test --verbose
+        run: cargo test --all-features --verbose
   cargo_test_release:
     name: "Cargo Test (Release)"
     runs-on: ubuntu-latest
@@ -29,9 +29,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Build
-        run: cargo build --release --verbose
+        run: cargo build --all-features --release --verbose
       - name: Test with Cargo (Release)
-        run: cargo test --release --verbose
+        run: cargo test --all-features --release --verbose
   miri_test:
     name: "Miri Test"
     runs-on: ubuntu-latest
@@ -44,7 +44,7 @@ jobs:
           rustup override set nightly
           cargo miri setup
       - name: Test with Miri
-        run: cargo miri test
+        run: cargo miri test --all-features
   miri_test_with_flags:
     name: "Miri Test (RUSTFLAGS)"
     env:
@@ -59,4 +59,4 @@ jobs:
           rustup override set nightly
           cargo miri setup
       - name: Test with Miri
-        run: cargo miri test
+        run: cargo miri test --all-features

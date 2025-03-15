@@ -88,7 +88,6 @@ pub(crate) use core::sync::atomic::AtomicU32 as AtomicCounter;
 #[cfg(all(
     not(target_pointer_width = "64"),
     not(target_pointer_width = "16"),
-    not(target_pointer_width = "8"),
     feature = "usize-for-small-platforms",
 ))]
 pub(crate) use core::sync::atomic::AtomicUsize as AtomicCounter;
@@ -122,12 +121,9 @@ pub(crate) use u16 as ucount;
 ))]
 pub(crate) use u8 as ucount;
 
-#[cfg(all(target_pointer_width = "8", not(feature = "usize-for-small-platforms")))]
-pub(crate) use usize as ucount;
-
-#[cfg(all(not(target_pointer_width = "16"), not(target_pointer_width = "8")))]
+#[cfg(all(not(target_pointer_width = "16")))]
 mod arc;
 mod rc;
-#[cfg(all(not(target_pointer_width = "16"), not(target_pointer_width = "8")))]
+#[cfg(all(not(target_pointer_width = "16")))]
 pub use arc::*;
 pub use rc::*;

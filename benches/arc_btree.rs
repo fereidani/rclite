@@ -57,14 +57,14 @@ fn criterion_benchmark(c: &mut Criterion) {
         use rclite::Arc;
         create_test!(Arc);
         b.iter(|| {
-            drop(trees(16));
+            drop(trees(17));
         })
     });
     c.bench_function("std_arc_btree", |b| {
         use std::sync::Arc;
         create_test!(Arc);
         b.iter(|| {
-            drop(trees(16));
+            drop(trees(17));
         })
     });
 }

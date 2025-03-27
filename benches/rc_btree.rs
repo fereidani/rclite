@@ -47,13 +47,13 @@ fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("binary-tree rclite::Rc", |b| {
         use rclite::Rc;
         create_test!(Rc);
-        let tree = create_tree(20);
+        let tree = create_tree(21);
         b.iter(|| tree_traversal(&tree))
     });
     c.bench_function("binary-tree std::Rc", |b| {
         use std::rc::Rc;
         create_test!(Rc);
-        let tree = create_tree(20);
+        let tree = create_tree(21);
         b.iter(|| tree_traversal(&tree))
     });
 }

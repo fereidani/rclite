@@ -7,7 +7,7 @@ use core::{
     fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
-    mem::MaybeUninit,
+    mem::{self, forget, MaybeUninit},
     ops::Deref,
     pin::Pin,
     ptr::NonNull,
@@ -447,6 +447,87 @@ impl<T> Arc<T> {
             dealloc(this.ptr.as_ptr() as *mut u8, Layout::new::<ArcInner<T>>());
             value
         })
+    }
+
+    /// Constructs a new `Arc<MaybeUninit<T>>` with uninitialized contents.
+    ///
+    /// This is useful when you want to allocate memory for a value but
+    /// initialize it later. The memory is allocated but not initialized,
+    /// which can be more efficient than allocating and immediately
+    /// overwriting the value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rclite::Arc;
+    /// use core::mem::MaybeUninit;
+    ///
+    /// let uninit_arc: Arc<MaybeUninit<i32>> = Arc::new_uninit();
+    /// // Initialize the value
+    /// let arc = unsafe {
+    ///     let mut uninit_arc = uninit_arc;
+    ///     Arc::get_mut(&mut uninit_arc).unwrap().write(42);
+    ///     Arc::assume_init(uninit_arc)
+    /// };
+    /// assert_eq!(*arc, 42);
+    /// ```
+    ///
+    /// # See also
+    ///
+    /// * [`Arc::assume_init`]: Converts `Arc<MaybeUninit<T>>` to `Arc<T>` after initialization.
+    /// * [`Arc::new`]: Constructs a new `Arc<T>` with initialized contents.
+    pub fn new_uninit() -> Arc<mem::MaybeUninit<T>> {
+        let inner = Box::new(ArcInner {
+            data: UnsafeCell::new(MaybeUninit::uninit()),
+            counter: AtomicCounter::new(1),
+        });
+        Arc {
+            ptr: unsafe { NonNull::new_unchecked(Box::leak(inner)) },
+            phantom: PhantomData,
+        }
+    }
+
+    /// Converts an `Arc<MaybeUninit<T>>` to `Arc<T>` assuming the value is initialized.
+    ///
+    /// This function allows you to convert an `Arc<MaybeUninit<T>>` (typically created
+    /// with [`Arc::new_uninit`]) to `Arc<T>` after the value has been properly initialized.
+    /// The conversion is zero-cost as it only changes the type information without
+    /// moving or copying data.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the value inside the `MaybeUninit<T>` is properly
+    /// initialized before calling this function. Using this function on uninitialized
+    /// data leads to undefined behavior.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rclite::Arc;
+    /// use core::mem::MaybeUninit;
+    ///
+    /// let mut uninit_arc: Arc<MaybeUninit<i32>> = Arc::new_uninit();
+    ///
+    /// // Initialize the value
+    /// unsafe {
+    ///     Arc::get_mut(&mut uninit_arc).unwrap().write(42);
+    ///     let arc = Arc::assume_init(uninit_arc);
+    ///     assert_eq!(*arc, 42);
+    /// }
+    /// ```
+    ///
+    /// # See also
+    ///
+    /// * [`Arc::new_uninit`]: Creates an `Arc<MaybeUninit<T>>` with uninitialized contents.
+    /// * [`MaybeUninit::assume_init`]: The underlying method for assuming initialization.
+    ///
+    pub unsafe fn assume_init(this: Arc<mem::MaybeUninit<T>>) -> Arc<T> {
+        let ptr = this.ptr.as_ptr();
+        forget(this);
+        Arc {
+            ptr: NonNull::new_unchecked(ptr as *mut ArcInner<T>),
+            phantom: PhantomData,
+        }
     }
 }
 

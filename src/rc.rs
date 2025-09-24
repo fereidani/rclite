@@ -6,7 +6,7 @@ use core::{
     fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
-    mem::MaybeUninit,
+    mem::{self, forget, MaybeUninit},
     ops::Deref,
     pin::Pin,
     ptr::NonNull,
@@ -357,6 +357,87 @@ impl<T> Rc<T> {
     /// conditions that do not apply to `Rc`.
     pub fn into_inner(this: Self) -> Option<T> {
         Rc::try_unwrap(this).ok()
+    }
+
+    /// Constructs a new `Rc<MaybeUninit<T>>` with uninitialized contents.
+    ///
+    /// This is useful when you want to allocate memory for a value but
+    /// initialize it later. The memory is allocated but not initialized,
+    /// which can be more efficient than allocating and immediately
+    /// overwriting the value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rclite::Rc;
+    /// use core::mem::MaybeUninit;
+    ///
+    /// let uninit_rc: Rc<MaybeUninit<i32>> = Rc::new_uninit();
+    /// // Initialize the value
+    /// let rc = unsafe {
+    ///     let mut uninit_rc = uninit_rc;
+    ///     Rc::get_mut(&mut uninit_rc).unwrap().write(42);
+    ///     Rc::assume_init(uninit_rc)
+    /// };
+    /// assert_eq!(*rc, 42);
+    /// ```
+    ///
+    /// # See also
+    ///
+    /// * [`Rc::assume_init`]: Converts `Rc<MaybeUninit<T>>` to `Rc<T>` after initialization.
+    /// * [`Rc::new`]: Constructs a new `Rc<T>` with initialized contents.
+    pub fn new_uninit() -> Rc<mem::MaybeUninit<T>> {
+        let inner = Box::new(RcInner {
+            data: MaybeUninit::uninit(),
+            counter: Cell::new(1),
+        });
+        Rc {
+            ptr: unsafe { NonNull::new_unchecked(Box::leak(inner)) },
+            phantom: PhantomData,
+        }
+    }
+
+    /// Converts an `Rc<MaybeUninit<T>>` to `Rc<T>` assuming the value is initialized.
+    ///
+    /// This function allows you to convert an `Rc<MaybeUninit<T>>` (typically created
+    /// with [`Rc::new_uninit`]) to `Rc<T>` after the value has been properly initialized.
+    /// The conversion is zero-cost as it only changes the type information without
+    /// moving or copying data.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the value inside the `MaybeUninit<T>` is properly
+    /// initialized before calling this function. Using this function on uninitialized
+    /// data leads to undefined behavior.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rclite::Rc;
+    /// use core::mem::MaybeUninit;
+    ///
+    /// let mut uninit_rc: Rc<MaybeUninit<i32>> = Rc::new_uninit();
+    ///
+    /// // Initialize the value
+    /// unsafe {
+    ///     Rc::get_mut(&mut uninit_rc).unwrap().write(42);
+    ///     let rc = Rc::assume_init(uninit_rc);
+    ///     assert_eq!(*rc, 42);
+    /// }
+    /// ```
+    ///
+    /// # See also
+    ///
+    /// * [`Rc::new_uninit`]: Creates an `Rc<MaybeUninit<T>>` with uninitialized contents.
+    /// * [`MaybeUninit::assume_init`]: The underlying method for assuming initialization.
+    ///
+    pub unsafe fn assume_init(this: Rc<mem::MaybeUninit<T>>) -> Rc<T> {
+        let ptr = this.ptr.as_ptr();
+        forget(this);
+        Rc {
+            ptr: NonNull::new_unchecked(ptr as *mut RcInner<T>),
+            phantom: PhantomData,
+        }
     }
 }
 

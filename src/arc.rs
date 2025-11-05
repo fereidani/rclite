@@ -486,7 +486,9 @@ impl<T> Arc<T> {
             phantom: PhantomData,
         }
     }
+}
 
+impl<T> Arc<MaybeUninit<T>> {
     /// Converts an `Arc<MaybeUninit<T>>` to `Arc<T>` assuming the value is initialized.
     ///
     /// This function allows you to convert an `Arc<MaybeUninit<T>>` (typically created
@@ -521,9 +523,9 @@ impl<T> Arc<T> {
     /// * [`Arc::new_uninit`]: Creates an `Arc<MaybeUninit<T>>` with uninitialized contents.
     /// * [`MaybeUninit::assume_init`]: The underlying method for assuming initialization.
     ///
-    pub unsafe fn assume_init(this: Arc<mem::MaybeUninit<T>>) -> Arc<T> {
-        let ptr = this.ptr.as_ptr();
-        forget(this);
+    pub unsafe fn assume_init(self) -> Arc<T> {
+        let ptr = self.ptr.as_ptr();
+        forget(self);
         Arc {
             ptr: NonNull::new_unchecked(ptr as *mut ArcInner<T>),
             phantom: PhantomData,

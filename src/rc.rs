@@ -396,7 +396,9 @@ impl<T> Rc<T> {
             phantom: PhantomData,
         }
     }
+}
 
+impl<T> Rc<MaybeUninit<T>> {
     /// Converts an `Rc<MaybeUninit<T>>` to `Rc<T>` assuming the value is initialized.
     ///
     /// This function allows you to convert an `Rc<MaybeUninit<T>>` (typically created
@@ -431,9 +433,9 @@ impl<T> Rc<T> {
     /// * [`Rc::new_uninit`]: Creates an `Rc<MaybeUninit<T>>` with uninitialized contents.
     /// * [`MaybeUninit::assume_init`]: The underlying method for assuming initialization.
     ///
-    pub unsafe fn assume_init(this: Rc<mem::MaybeUninit<T>>) -> Rc<T> {
-        let ptr = this.ptr.as_ptr();
-        forget(this);
+    pub unsafe fn assume_init(self) -> Rc<T> {
+        let ptr = self.ptr.as_ptr();
+        forget(self);
         Rc {
             ptr: NonNull::new_unchecked(ptr as *mut RcInner<T>),
             phantom: PhantomData,

@@ -1,6 +1,6 @@
 [package]
 name = "rclite"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2018"
 rust-version = "1.47"
 authors = ["Khashayar Fereidani"]
@@ -17,7 +17,7 @@ default = ["usize-for-small-platforms"]
 usize-for-small-platforms = []
 
 [dependencies]
-branches = { version = "0.4", default-features = false }
+branches = { version = "0.5", default-features = false }
 
 [dev-dependencies]
 criterion = "0.4"

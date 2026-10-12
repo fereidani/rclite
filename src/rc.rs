@@ -118,6 +118,19 @@ impl<T> Rc<T> {
         ptr
     }
 
+    /// Turns [`Rc<T>`] into a raw pointer, must be converted back to
+    /// [`Rc<T>`] with [`Rc::from_raw`] to avoid memory leak.
+    ///
+    /// This exposes the pointer as a mutable pointer, but any mutation
+    /// done through this pointer is not safe. This is primarily useful
+    /// for maintaining an [AtomicPtr<T>] to an [`Rc<T>`].
+    #[inline]
+    pub unsafe fn into_raw_mut(this: Self) -> *mut T {
+        let ptr = this.ptr.as_ptr() as *mut T;
+        core::mem::forget(this);
+        ptr
+    }
+
     /// Constructs an [`Rc<T>`] from a raw pointer. The raw pointer must have
     /// been from [`Rc<U>::into_raw`] where U and T must have the same size
     /// and alignment. Improper use may lead to memory unsafe operations.

@@ -173,6 +173,19 @@ impl<T> Arc<T> {
         ptr
     }
 
+    /// Turns [`Arc<T>`] into a raw pointer, must be converted back to
+    /// [`Arc<T>`] with [`Arc::from_raw`] to avoid memory leak.
+    ///
+    /// This exposes the pointer as a mutable pointer, but any mutation
+    /// done through this pointer is not safe. This is primarily useful
+    /// for maintaining an [AtomicPtr<T>] to an [`Arc<T>`].
+    #[inline]
+    pub unsafe fn into_raw_mut(this: Self) -> *mut T {
+        let ptr = this.ptr.as_ptr() as *mut T;
+        core::mem::forget(this);
+        ptr
+    }
+
     /// Constructs an [`Arc<T>`] from a raw pointer. The raw pointer must have
     /// been from [`Arc<U>::into_raw`] where U and T must have the same size
     /// and alignment. Improper use may lead to memory unsafe operations.
